@@ -11,6 +11,7 @@ interface AuthContextType {
   login: (username: string, password: string) => boolean;
   loginAs: (role: UserRole) => void;
   logout: () => void;
+  updateCurrentUser: (changes: Partial<User>) => void;
   isAdmin: boolean;
   isMember: boolean;
 }
@@ -67,6 +68,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
+  const updateCurrentUser = useCallback((changes: Partial<User>) => {
+    setUser((prev) => (prev ? { ...prev, ...changes } : prev));
+  }, []);
+
   const isAdmin = user?.role === "admin";
   const isMember = !!user && user.role !== "admin";
 
@@ -79,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         loginAs,
         logout,
+        updateCurrentUser,
         isAdmin,
         isMember,
       }}

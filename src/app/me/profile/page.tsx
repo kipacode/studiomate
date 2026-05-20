@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useUsers } from "@/lib/users-context";
 import {
   cn,
   getInitials,
@@ -40,7 +41,8 @@ import {
 } from "lucide-react";
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, updateCurrentUser } = useAuth();
+  const { updateUser } = useUsers();
 
   const [name, setName] = useState(user?.name || "");
   const [username, setUsername] = useState(user?.username || "");
@@ -75,8 +77,21 @@ export default function ProfilePage() {
     user.role === "employee" || user.role === "intern";
 
   function handleSave() {
+    if (!user) return;
     setIsSaving(true);
-    // Simulate save delay
+
+    const changes: Partial<typeof user> = {
+      name,
+      username,
+      email,
+      homeLabel: homeLabel || undefined,
+      homeLat: homeLat ? parseFloat(homeLat) : undefined,
+      homeLng: homeLng ? parseFloat(homeLng) : undefined,
+    };
+
+    updateUser(user.id, changes);
+    updateCurrentUser(changes);
+
     setTimeout(() => {
       setIsSaving(false);
       setCurrentPassword("");
@@ -85,7 +100,7 @@ export default function ProfilePage() {
       toast.success("Profile updated successfully", {
         description: "Your changes have been saved.",
       });
-    }, 800);
+    }, 400);
   }
 
   return (
