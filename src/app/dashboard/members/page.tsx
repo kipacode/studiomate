@@ -12,11 +12,11 @@ import {
   XCircle,
 } from 'lucide-react';
 import {
-  mockUsers,
   getAttendanceStatus,
   getAttendanceHistory,
   getUserActivities,
 } from '@/lib/mock-data';
+import { useUsers } from '@/lib/users-context';
 import type { User, Attendance, ActivityLog, AttendanceStatus as TAttendanceStatus } from '@/lib/types';
 import {
   cn,
@@ -292,6 +292,7 @@ function MemberRow({ user, onView }: { user: User; onView: (u: User) => void }) 
 type RoleFilter = 'all' | 'employee' | 'intern' | 'freelancer';
 
 export default function MembersPage() {
+  const { users } = useUsers();
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -299,8 +300,8 @@ export default function MembersPage() {
 
   // Filter out admin users — they are not "team members"
   const allMembers = useMemo(
-    () => mockUsers.filter((u) => u.role !== 'admin'),
-    [],
+    () => users.filter((u) => u.role !== 'admin'),
+    [users],
   );
 
   const filteredMembers = useMemo(() => {

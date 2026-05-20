@@ -48,7 +48,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { User, UserRole, QRToken, Location } from "@/lib/types";
-import { mockUsers, mockQRTokens, mockLocations, activityCategories } from "@/lib/mock-data";
+import { mockQRTokens, mockLocations, activityCategories } from "@/lib/mock-data";
+import { useUsers } from "@/lib/users-context";
 import {
   cn,
   formatDate,
@@ -61,7 +62,7 @@ import {
 // ── User Management Tab ──────────────────────────────────────────
 
 function UserManagementTab() {
-  const [users, setUsers] = useState<User[]>(mockUsers);
+  const { users, updateUser, createUser, toggleStatus } = useUsers();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
@@ -70,7 +71,7 @@ function UserManagementTab() {
     username: "",
     email: "",
     birthDate: "",
-    role: "employee" as UserRole,
+    role: "intern" as UserRole,
     status: "active" as "active" | "inactive",
     internshipStart: "",
     internshipEnd: "",
@@ -89,7 +90,7 @@ function UserManagementTab() {
       username: "",
       email: "",
       birthDate: "",
-      role: "employee",
+      role: "intern",
       status: "active",
       internshipStart: "",
       internshipEnd: "",
@@ -118,38 +119,32 @@ function UserManagementTab() {
       return;
     }
     if (editUser) {
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === editUser.id
-            ? { ...u, ...formData, birthDate: formData.birthDate || undefined, internshipStart: formData.internshipStart || undefined, internshipEnd: formData.internshipEnd || undefined }
-            : u
-        )
-      );
+      updateUser(editUser.id, {
+        ...formData,
+        birthDate: formData.birthDate || undefined,
+        internshipStart: formData.internshipStart || undefined,
+        internshipEnd: formData.internshipEnd || undefined,
+      });
       toast.success("User updated successfully");
     } else {
       const newUser: User = {
         id: `u-${Date.now()}`,
         ...formData,
         password: "hashed",
+        avatar: "",
         birthDate: formData.birthDate || undefined,
         internshipStart: formData.internshipStart || undefined,
         internshipEnd: formData.internshipEnd || undefined,
         createdAt: new Date().toISOString(),
       };
-      setUsers((prev) => [...prev, newUser]);
+      createUser(newUser);
       toast.success("User created successfully");
     }
     setDialogOpen(false);
   }
 
-  function toggleStatus(userId: string) {
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === userId
-          ? { ...u, status: u.status === "active" ? "inactive" : "active" }
-          : u
-      )
-    );
+  function handleToggleStatus(userId: string) {
+    toggleStatus(userId);
     toast.success("User status updated");
   }
 
@@ -246,7 +241,7 @@ function UserManagementTab() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
-                        onClick={() => toggleStatus(user.id)}
+                        onClick={() => handleToggleStatus(user.id)}
                       >
                         <ToggleLeft className="h-3.5 w-3.5" />
                       </Button>

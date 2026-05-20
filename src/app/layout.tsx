@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Open_Sans } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth-context";
+import { UsersProvider } from "@/lib/users-context";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -26,10 +27,12 @@ export default function RootLayout({
     <html lang="en" className={`${openSans.variable} dark h-full antialiased`}>
       <body className="min-h-full flex flex-col font-sans">
         <AuthProvider>
-          <TooltipProvider>
-            {children}
-          </TooltipProvider>
-          <Toaster position="top-right" richColors />
+          <UsersProvider>
+            <TooltipProvider>
+              {children}
+            </TooltipProvider>
+            <Toaster position="top-right" richColors />
+          </UsersProvider>
         </AuthProvider>
       </body>
     </html>
