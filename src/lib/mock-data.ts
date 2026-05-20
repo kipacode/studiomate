@@ -53,6 +53,8 @@ export const mockUsers: User[] = [
     status: "active",
     birthDate: "2008-03-20",
     avatar: "",
+    internshipStart: "2026-01-05",
+    internshipEnd: "2026-06-30",
     createdAt: "2024-02-15T00:00:00Z",
   },
   {
@@ -65,6 +67,8 @@ export const mockUsers: User[] = [
     status: "active",
     birthDate: "2008-07-02",
     avatar: "",
+    internshipStart: "2026-01-05",
+    internshipEnd: "2026-06-30",
     createdAt: "2024-03-01T00:00:00Z",
   },
   {
@@ -77,6 +81,8 @@ export const mockUsers: User[] = [
     status: "active",
     birthDate: "2008-12-26",
     avatar: "",
+    internshipStart: "2026-01-05",
+    internshipEnd: "2026-06-30",
     createdAt: "2024-03-10T00:00:00Z",
   },
   {
@@ -89,8 +95,8 @@ export const mockUsers: User[] = [
     status: "active",
     birthDate: "2009-07-18",
     avatar: "",
-    internshipStart: "2026-03-01",
-    internshipEnd: "2026-08-31",
+    internshipStart: "2026-01-05",
+    internshipEnd: "2026-06-30",
     homeLat: -7.972,
     homeLng: 112.641,
     homeLabel: "Kos Sumbersari",
@@ -106,6 +112,8 @@ export const mockUsers: User[] = [
     status: "active",
     birthDate: "2008-12-07",
     avatar: "",
+    internshipStart: "2026-01-05",
+    internshipEnd: "2026-06-30",
     createdAt: "2024-03-20T00:00:00Z",
   },
   {
@@ -118,6 +126,8 @@ export const mockUsers: User[] = [
     status: "active",
     birthDate: "2008-08-04",
     avatar: "",
+    internshipStart: "2026-01-05",
+    internshipEnd: "2026-06-30",
     createdAt: "2024-04-01T00:00:00Z",
   },
   {
@@ -130,6 +140,8 @@ export const mockUsers: User[] = [
     status: "active",
     birthDate: "2008-06-14",
     avatar: "",
+    internshipStart: "2026-01-05",
+    internshipEnd: "2026-06-30",
     createdAt: "2024-04-15T00:00:00Z",
   },
   {
@@ -142,6 +154,8 @@ export const mockUsers: User[] = [
     status: "active",
     birthDate: "2008-12-22",
     avatar: "",
+    internshipStart: "2026-01-05",
+    internshipEnd: "2026-06-30",
     createdAt: "2024-05-01T00:00:00Z",
   },
   {
@@ -154,6 +168,8 @@ export const mockUsers: User[] = [
     status: "active",
     birthDate: "2009-06-30",
     avatar: "",
+    internshipStart: "2026-01-05",
+    internshipEnd: "2026-06-30",
     createdAt: "2024-05-15T00:00:00Z",
   },
 ];
