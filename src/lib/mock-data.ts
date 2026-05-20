@@ -55,7 +55,7 @@ export const mockUsers: User[] = [
     avatar: "",
     internshipStart: "2026-01-05",
     internshipEnd: "2026-06-30",
-    createdAt: "2024-02-15T00:00:00Z",
+    createdAt: "2026-05-20T00:00:00Z",
   },
   {
     id: "u-003",
@@ -69,7 +69,7 @@ export const mockUsers: User[] = [
     avatar: "",
     internshipStart: "2026-01-05",
     internshipEnd: "2026-06-30",
-    createdAt: "2024-03-01T00:00:00Z",
+    createdAt: "2026-05-20T00:00:00Z",
   },
   {
     id: "u-004",
@@ -83,7 +83,7 @@ export const mockUsers: User[] = [
     avatar: "",
     internshipStart: "2026-01-05",
     internshipEnd: "2026-06-30",
-    createdAt: "2024-03-10T00:00:00Z",
+    createdAt: "2026-05-20T00:00:00Z",
   },
   {
     id: "u-005",
@@ -100,7 +100,7 @@ export const mockUsers: User[] = [
     homeLat: -7.972,
     homeLng: 112.641,
     homeLabel: "Kos Sumbersari",
-    createdAt: "2026-03-01T00:00:00Z",
+    createdAt: "2026-05-20T00:00:00Z",
   },
   {
     id: "u-006",
@@ -114,7 +114,7 @@ export const mockUsers: User[] = [
     avatar: "",
     internshipStart: "2026-01-05",
     internshipEnd: "2026-06-30",
-    createdAt: "2024-03-20T00:00:00Z",
+    createdAt: "2026-05-20T00:00:00Z",
   },
   {
     id: "u-007",
@@ -128,7 +128,7 @@ export const mockUsers: User[] = [
     avatar: "",
     internshipStart: "2026-01-05",
     internshipEnd: "2026-06-30",
-    createdAt: "2024-04-01T00:00:00Z",
+    createdAt: "2026-05-20T00:00:00Z",
   },
   {
     id: "u-008",
@@ -142,7 +142,7 @@ export const mockUsers: User[] = [
     avatar: "",
     internshipStart: "2026-01-05",
     internshipEnd: "2026-06-30",
-    createdAt: "2024-04-15T00:00:00Z",
+    createdAt: "2026-05-20T00:00:00Z",
   },
   {
     id: "u-009",
@@ -156,7 +156,7 @@ export const mockUsers: User[] = [
     avatar: "",
     internshipStart: "2026-01-05",
     internshipEnd: "2026-06-30",
-    createdAt: "2024-05-01T00:00:00Z",
+    createdAt: "2026-05-20T00:00:00Z",
   },
   {
     id: "u-010",
@@ -170,7 +170,7 @@ export const mockUsers: User[] = [
     avatar: "",
     internshipStart: "2026-01-05",
     internshipEnd: "2026-06-30",
-    createdAt: "2024-05-15T00:00:00Z",
+    createdAt: "2026-05-20T00:00:00Z",
   },
 ];
 
@@ -257,9 +257,9 @@ function hashCode(str: string): number {
   return hash;
 }
 
-const attendanceUserIds = ["u-002", "u-003", "u-004", "u-005", "u-006"];
+const attendanceUserIds = ["u-002", "u-003", "u-004", "u-005", "u-006", "u-007", "u-008", "u-009", "u-010"];
 export const mockAttendance: Attendance[] = attendanceUserIds.flatMap((uid) =>
-  generateAttendanceForUser(uid, 14)
+  generateAttendanceForUser(uid, 0)
 );
 
 // ── Activity Categories ────────────────────────────────────────────
