@@ -43,6 +43,7 @@ export default function ProfilePage() {
   const { user } = useAuth();
 
   const [name, setName] = useState(user?.name || "");
+  const [username, setUsername] = useState(user?.username || "");
   const [email, setEmail] = useState(user?.email || "");
 
   // Home location
@@ -153,6 +154,16 @@ export default function ProfilePage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Your full name"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="username">Username</Label>
+            <Input
+              id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Your username"
             />
           </div>
 
