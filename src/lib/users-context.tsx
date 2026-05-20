@@ -18,21 +18,30 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
 
   function updateUser(id: string, changes: Partial<User>) {
     setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, ...changes } : u))
+      prev.map((u) => {
+        if (u.id !== id) return u;
+        const updated = { ...u, ...changes };
+        const idx = mockUsers.findIndex((m) => m.id === id);
+        if (idx !== -1) mockUsers[idx] = updated;
+        return updated;
+      })
     );
   }
 
   function createUser(user: User) {
+    mockUsers.push(user);
     setUsers((prev) => [...prev, user]);
   }
 
   function toggleStatus(id: string) {
     setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id
-          ? { ...u, status: u.status === "active" ? "inactive" : "active" }
-          : u
-      )
+      prev.map((u) => {
+        if (u.id !== id) return u;
+        const updated: User = { ...u, status: u.status === "active" ? "inactive" : "active" };
+        const idx = mockUsers.findIndex((m) => m.id === id);
+        if (idx !== -1) mockUsers[idx] = updated;
+        return updated;
+      })
     );
   }
 
