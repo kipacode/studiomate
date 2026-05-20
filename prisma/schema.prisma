@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  admin
+  employee
+  intern
+  freelancer
+}
+
+enum UserStatus {
+  active
+  inactive
+}
+
+enum ActivityCategory {
+  design
+  research
+  admin
+  content
+  development
+  other
+}
+
+enum ActivityStatus {
+  in_progress
+  done
+}
+
+model User {
+  id              String       @id @default(cuid())
+  name            String
+  username        String       @unique
+  email           String       @unique
+  password        String
+  role            UserRole     @default(intern)
+  status          UserStatus   @default(active)
+  birthDate       String?
+  avatar          String?
+  internshipStart String?
+  internshipEnd   String?
+  homeLat         Float?
+  homeLng         Float?
+  homeLabel       String?
+  createdAt       DateTime     @default(now())
+
+  attendances     Attendance[]
+  activities      ActivityLog[]
+}
+
+model Location {
+  id           String  @id @default(cuid())
+  label        String
+  address      String
+  lat          Float
+  lng          Float
+  radiusMeters Int
+  createdBy    String
+  isActive     Boolean @default(true)
+}
+
+model Attendance {
+  id           String    @id @default(cuid())
+  userId       String
+  date         String
+  checkInTime  DateTime?
+  checkOutTime DateTime?
+  qrTokenUsed  String
+  isLate       Boolean   @default(false)
+  flagged      Boolean   @default(false)
+  flagNote     String?
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}
+
+model ActivityLog {
+  id             String           @id @default(cuid())
+  userId         String
+  date           String
+  taskTitle      String
+  category       ActivityCategory
+  description    String?
+  status         ActivityStatus   @default(in_progress)
+  estimatedHours Int
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model QRToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  validDate String
+  createdBy String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
