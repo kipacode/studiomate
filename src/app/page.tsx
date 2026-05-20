@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 
 export default function RootPage() {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isLoading, isAdmin } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
+    if (isLoading) return;
     if (!isAuthenticated) {
       router.replace("/login");
     } else if (isAdmin) {
@@ -16,7 +17,7 @@ export default function RootPage() {
     } else {
       router.replace("/me");
     }
-  }, [isAuthenticated, isAdmin, router]);
+  }, [isAuthenticated, isLoading, isAdmin, router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">

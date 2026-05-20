@@ -7,6 +7,7 @@ import {
   Mail,
   Calendar,
   Briefcase,
+  Cake,
   CheckCircle2,
   XCircle,
 } from 'lucide-react';
@@ -101,6 +102,12 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
               <Mail className="h-3 w-3" />
               {user.email}
             </div>
+            {user.birthDate && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Cake className="h-3 w-3" />
+                {formatDate(user.birthDate)}
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Badge variant="outline" className={cn('text-[10px]', getRoleColor(user.role))}>
                 {getRoleLabel(user.role)}

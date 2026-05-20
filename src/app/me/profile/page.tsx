@@ -36,6 +36,7 @@ import {
   GraduationCap,
   Lock,
   Save,
+  Cake,
 } from "lucide-react";
 
 export default function ProfilePage() {
@@ -107,6 +108,12 @@ export default function ProfilePage() {
           <div>
             <h2 className="text-lg font-semibold text-white">{user.name}</h2>
             <p className="text-sm text-neutral-400">{user.email}</p>
+            {user.birthDate && (
+              <div className="flex items-center gap-1.5 text-sm text-neutral-400 mt-0.5">
+                <Cake className="size-3.5" />
+                {formatDate(user.birthDate)}
+              </div>
+            )}
             <div className="flex items-center gap-2 mt-2">
               <Badge
                 variant="secondary"

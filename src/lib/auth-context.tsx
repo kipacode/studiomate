@@ -7,6 +7,7 @@ import { mockUsers } from "./mock-data";
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
   login: (username: string, password: string) => boolean;
   loginAs: (role: UserRole) => void;
   logout: () => void;
@@ -20,6 +21,7 @@ const STORAGE_KEY = "studiomate_auth_user";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Restore session from localStorage
   useEffect(() => {
@@ -35,6 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
+    setIsLoading(false);
   }, []);
 
   const login = useCallback((username: string, _password: string): boolean => {
@@ -72,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         isAuthenticated: !!user,
+        isLoading,
         login,
         loginAs,
         logout,

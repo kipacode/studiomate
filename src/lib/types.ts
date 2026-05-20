@@ -21,6 +21,7 @@ export interface User {
   password: string;
   role: UserRole;
   status: "active" | "inactive";
+  birthDate?: string;
   avatar?: string;
   internshipStart?: string;
   internshipEnd?: string;

@@ -69,6 +69,7 @@ function UserManagementTab() {
     name: "",
     username: "",
     email: "",
+    birthDate: "",
     role: "employee" as UserRole,
     status: "active" as "active" | "inactive",
     internshipStart: "",
@@ -87,6 +88,7 @@ function UserManagementTab() {
       name: "",
       username: "",
       email: "",
+      birthDate: "",
       role: "employee",
       status: "active",
       internshipStart: "",
@@ -101,6 +103,7 @@ function UserManagementTab() {
       name: user.name,
       username: user.username,
       email: user.email,
+      birthDate: user.birthDate || "",
       role: user.role,
       status: user.status,
       internshipStart: user.internshipStart || "",
@@ -118,7 +121,7 @@ function UserManagementTab() {
       setUsers((prev) =>
         prev.map((u) =>
           u.id === editUser.id
-            ? { ...u, ...formData, internshipStart: formData.internshipStart || undefined, internshipEnd: formData.internshipEnd || undefined }
+            ? { ...u, ...formData, birthDate: formData.birthDate || undefined, internshipStart: formData.internshipStart || undefined, internshipEnd: formData.internshipEnd || undefined }
             : u
         )
       );
@@ -128,6 +131,7 @@ function UserManagementTab() {
         id: `u-${Date.now()}`,
         ...formData,
         password: "hashed",
+        birthDate: formData.birthDate || undefined,
         internshipStart: formData.internshipStart || undefined,
         internshipEnd: formData.internshipEnd || undefined,
         createdAt: new Date().toISOString(),
@@ -292,6 +296,16 @@ function UserManagementTab() {
                   setFormData((f) => ({ ...f, email: e.target.value }))
                 }
                 placeholder="email@kipaworks.studio"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Birth Date</Label>
+              <Input
+                type="date"
+                value={formData.birthDate}
+                onChange={(e) =>
+                  setFormData((f) => ({ ...f, birthDate: e.target.value }))
+                }
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
