@@ -16,14 +16,42 @@ export default function LoginPage() {
   const { login } = useAuth();
   const router = useRouter();
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+    if (!username || !password) {
+      toast.error("Please enter your username and password.");
+      return;
+    }
     setLoading(true);
+
+    if (username === "admin") {
+      // Admin: authenticate against the real backend
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        if (res.ok) {
+          login(username, password); // sync client-side AuthContext
+          router.push("/dashboard");
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error ?? "Invalid credentials.");
+      } catch {
+        toast.error("Could not reach the server. Is the database running?");
+      }
+      setLoading(false);
+      return;
+    }
+
+    // Non-admin: use mock login (no real password check needed yet)
     const success = login(username, password);
     if (success) {
-      router.push(username === "admin" ? "/dashboard" : "/me");
+      router.push("/me");
     } else {
-      toast.error("Invalid credentials. Try a quick access button below.");
+      toast.error("User not found or inactive.");
       setLoading(false);
     }
   }

@@ -70,6 +70,7 @@ function UserManagementTab() {
     name: "",
     username: "",
     email: "",
+    password: "",
     birthDate: "",
     role: "intern" as UserRole,
     status: "active" as "active" | "inactive",
@@ -89,6 +90,7 @@ function UserManagementTab() {
       name: "",
       username: "",
       email: "",
+      password: "",
       birthDate: "",
       role: "intern",
       status: "active",
@@ -104,6 +106,7 @@ function UserManagementTab() {
       name: user.name,
       username: user.username,
       email: user.email,
+      password: "",
       birthDate: user.birthDate || "",
       role: user.role,
       status: user.status,
@@ -118,10 +121,18 @@ function UserManagementTab() {
       toast.error("Name, username and email are required");
       return;
     }
+    if (!editUser && !formData.password) {
+      toast.error("Password is required when creating a new user");
+      return;
+    }
     if (editUser) {
       updateUser(editUser.id, {
-        ...formData,
+        name: formData.name,
+        username: formData.username,
+        email: formData.email,
         birthDate: formData.birthDate || undefined,
+        role: formData.role,
+        status: formData.status,
         internshipStart: formData.internshipStart || undefined,
         internshipEnd: formData.internshipEnd || undefined,
       });
@@ -129,8 +140,12 @@ function UserManagementTab() {
     } else {
       const newUser: User = {
         id: `u-${Date.now()}`,
-        ...formData,
-        password: "hashed",
+        name: formData.name,
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        role: formData.role,
+        status: formData.status,
         avatar: "",
         birthDate: formData.birthDate || undefined,
         internshipStart: formData.internshipStart || undefined,
@@ -280,6 +295,25 @@ function UserManagementTab() {
                   setFormData((f) => ({ ...f, username: e.target.value }))
                 }
                 placeholder="e.g. rizky"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                Password
+                {editUser && (
+                  <span className="ml-1 text-xs text-muted-foreground font-normal">
+                    (leave blank to keep current)
+                  </span>
+                )}
+              </Label>
+              <Input
+                type="password"
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData((f) => ({ ...f, password: e.target.value }))
+                }
+                placeholder={editUser ? "••••••••" : "Set initial password"}
+                autoComplete="new-password"
               />
             </div>
             <div className="space-y-2">
