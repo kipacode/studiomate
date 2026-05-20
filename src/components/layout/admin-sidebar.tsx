@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { getInitials } from "@/lib/utils";
 import {
@@ -10,6 +10,7 @@ import {
   FileText,
   Settings,
   LogOut,
+  ChevronRight,
 } from "lucide-react";
 import {
   Sidebar,
@@ -24,8 +25,7 @@ import {
   SidebarGroupContent,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -37,22 +37,33 @@ const navItems = [
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, logout } = useAuth();
+
+  function handleLogout() {
+    logout();
+    router.push("/login");
+  }
 
   return (
     <Sidebar>
-      <SidebarHeader className="p-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-foreground" />
-          <span className="text-sm font-semibold tracking-wide">
-            Kipaworks Studio
-          </span>
+      <SidebarHeader className="px-4 py-5">
+        <Link href="/dashboard" className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground">
+            <span className="text-xs font-bold text-background">KS</span>
+          </div>
+          <div>
+            <p className="text-sm font-semibold tracking-wide">Kipaworks</p>
+            <p className="text-[10px] text-muted-foreground leading-none">Studio Manager</p>
+          </div>
         </Link>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-[10px] uppercase tracking-widest text-muted-foreground/60 px-4">
+            Menu
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
@@ -64,15 +75,18 @@ export function AdminSidebar() {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       isActive={isActive}
+                      tooltip={item.label}
+                      render={<Link href={item.href} />}
                       className={cn(
-                        "transition-colors",
+                        "transition-all duration-150",
                         isActive && "font-medium"
                       )}
                     >
-                      <Link href={item.href}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.label}</span>
-                      </Link>
+                      <item.icon />
+                      <span>{item.label}</span>
+                      {isActive && (
+                        <ChevronRight className="ml-auto opacity-50" />
+                      )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
@@ -82,27 +96,32 @@ export function AdminSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
-        <Separator className="mb-4" />
+      <SidebarFooter className="p-3">
         {user && (
-          <div className="flex items-center gap-3">
-            <Avatar className="h-8 w-8">
-              <AvatarFallback className="text-xs bg-muted">
-                {getInitials(user.name)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user.name}</p>
-              <p className="text-xs text-muted-foreground">Admin</p>
+          <div className="rounded-lg bg-sidebar-accent/50 p-3">
+            <div className="flex items-center gap-3">
+              <Avatar className="h-9 w-9 ring-2 ring-border">
+                <AvatarFallback className="text-xs font-semibold bg-foreground text-background">
+                  {getInitials(user.name)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user.name}</p>
+                <Badge
+                  variant="outline"
+                  className="mt-0.5 h-4 px-1.5 text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                >
+                  Admin
+                </Badge>
+              </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              onClick={logout}
+            <button
+              onClick={handleLogout}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-border/50 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
             >
-              <LogOut className="h-4 w-4" />
-            </Button>
+              <LogOut className="h-3 w-3" />
+              Sign Out
+            </button>
           </div>
         )}
       </SidebarFooter>
