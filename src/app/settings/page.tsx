@@ -115,7 +115,7 @@ function UserManagementTab() {
     setDialogOpen(true);
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!formData.name || !formData.username || !formData.email) {
       toast.error("Name, username and email are required");
       return;
@@ -124,42 +124,47 @@ function UserManagementTab() {
       toast.error("Password is required when creating a new user");
       return;
     }
-    if (editUser) {
-      updateUser(editUser.id, {
-        name: formData.name,
-        username: formData.username,
-        email: formData.email,
-        birthDate: formData.birthDate || undefined,
-        role: formData.role,
-        status: formData.status,
-        internshipStart: formData.internshipStart || undefined,
-        internshipEnd: formData.internshipEnd || undefined,
-      });
-      toast.success("User updated successfully");
-    } else {
-      const newUser: User = {
-        id: `u-${Date.now()}`,
-        name: formData.name,
-        username: formData.username,
-        email: formData.email,
-        password: formData.password,
-        role: formData.role,
-        status: formData.status,
-        avatar: "",
-        birthDate: formData.birthDate || undefined,
-        internshipStart: formData.internshipStart || undefined,
-        internshipEnd: formData.internshipEnd || undefined,
-        createdAt: new Date().toISOString(),
-      };
-      createUser(newUser);
-      toast.success("User created successfully");
+    try {
+      if (editUser) {
+        await updateUser(editUser.id, {
+          name: formData.name,
+          username: formData.username,
+          email: formData.email,
+          birthDate: formData.birthDate || undefined,
+          role: formData.role,
+          status: formData.status,
+          internshipStart: formData.internshipStart || undefined,
+          internshipEnd: formData.internshipEnd || undefined,
+          ...(formData.password ? { password: formData.password } : {}),
+        });
+        toast.success("User updated successfully");
+      } else {
+        await createUser({
+          name: formData.name,
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+          status: formData.status,
+          birthDate: formData.birthDate || undefined,
+          internshipStart: formData.internshipStart || undefined,
+          internshipEnd: formData.internshipEnd || undefined,
+        });
+        toast.success("User created successfully");
+      }
+      setDialogOpen(false);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to save user");
     }
-    setDialogOpen(false);
   }
 
-  function handleToggleStatus(userId: string) {
-    toggleStatus(userId);
-    toast.success("User status updated");
+  async function handleToggleStatus(userId: string) {
+    try {
+      await toggleStatus(userId);
+      toast.success("User status updated");
+    } catch {
+      toast.error("Failed to update status");
+    }
   }
 
   return (

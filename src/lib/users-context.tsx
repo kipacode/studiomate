@@ -1,97 +1,76 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
-import { mockUsers } from "@/lib/mock-data";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import type { User } from "@/lib/types";
 
 interface UsersContextType {
   users: User[];
-  updateUser: (id: string, changes: Partial<User>) => void;
-  createUser: (user: User) => void;
-  toggleStatus: (id: string) => void;
+  loading: boolean;
+  refreshUsers: () => Promise<void>;
+  updateUser: (id: string, changes: Partial<User>) => Promise<void>;
+  createUser: (user: Partial<User> & { password: string }) => Promise<User>;
+  toggleStatus: (id: string) => Promise<void>;
 }
 
 const UsersContext = createContext<UsersContextType | null>(null);
 
-const STORAGE_KEY = "studiomate_users";
+export function UsersProvider({ children }: { children: React.ReactNode }) {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
 
-function syncMockUsers(users: User[]) {
-  mockUsers.length = 0;
-  users.forEach((u) => mockUsers.push(u));
-}
-
-function loadInitialUsers(): User[] {
-  if (typeof window === "undefined") return mockUsers;
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        syncMockUsers(parsed);
-        return parsed;
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return mockUsers;
-}
-
-function persistUsers(users: User[]) {
-  if (typeof window !== "undefined") {
+  const refreshUsers = useCallback(async () => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+      const res = await fetch("/api/users");
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data.users ?? []);
+      }
     } catch {
       // ignore
+    } finally {
+      setLoading(false);
     }
-  }
-}
+  }, []);
 
-export function UsersProvider({ children }: { children: React.ReactNode }) {
-  const [users, setUsers] = useState<User[]>(loadInitialUsers);
+  useEffect(() => {
+    refreshUsers();
+  }, [refreshUsers]);
 
-  function updateUser(id: string, changes: Partial<User>) {
-    setUsers((prev) => {
-      const next = prev.map((u) => {
-        if (u.id !== id) return u;
-        const updated = { ...u, ...changes };
-        const idx = mockUsers.findIndex((m) => m.id === id);
-        if (idx !== -1) mockUsers[idx] = updated;
-        return updated;
-      });
-      persistUsers(next);
-      return next;
+  async function updateUser(id: string, changes: Partial<User>) {
+    const res = await fetch(`/api/users/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(changes),
     });
+    if (!res.ok) throw new Error("Failed to update user");
+    const { user } = await res.json();
+    setUsers((prev) => prev.map((u) => (u.id === id ? user : u)));
   }
 
-  function createUser(user: User) {
-    mockUsers.push(user);
-    setUsers((prev) => {
-      const next = [...prev, user];
-      persistUsers(next);
-      return next;
+  async function createUser(data: Partial<User> & { password: string }): Promise<User> {
+    const res = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
     });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error ?? "Failed to create user");
+    }
+    const { user } = await res.json();
+    setUsers((prev) => [...prev, user]);
+    return user;
   }
 
-  function toggleStatus(id: string) {
-    setUsers((prev) => {
-      const next = prev.map((u) => {
-        if (u.id !== id) return u;
-        const updated: User = {
-          ...u,
-          status: u.status === "active" ? "inactive" : "active",
-        };
-        const idx = mockUsers.findIndex((m) => m.id === id);
-        if (idx !== -1) mockUsers[idx] = updated;
-        return updated;
-      });
-      persistUsers(next);
-      return next;
-    });
+  async function toggleStatus(id: string) {
+    const user = users.find((u) => u.id === id);
+    if (!user) return;
+    const newStatus = user.status === "active" ? "inactive" : "active";
+    await updateUser(id, { status: newStatus });
   }
 
   return (
-    <UsersContext.Provider value={{ users, updateUser, createUser, toggleStatus }}>
+    <UsersContext.Provider value={{ users, loading, refreshUsers, updateUser, createUser, toggleStatus }}>
       {children}
     </UsersContext.Provider>
   );
