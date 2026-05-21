@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import type { CameraDevice } from "html5-qrcode";
+import { SwitchCamera } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+type FacingMode = "environment" | "user";
 
 interface QrScannerProps {
   onScanSuccess: (decodedText: string) => void;
@@ -14,26 +17,15 @@ export function QrScanner({ onScanSuccess, onScanFailure }: QrScannerProps) {
   const isScanningRef = useRef(false);
   const onSuccessRef = useRef(onScanSuccess);
   const onFailureRef = useRef(onScanFailure);
-  const [cameras, setCameras] = useState<CameraDevice[]>([]);
-  const [selectedCameraId, setSelectedCameraId] = useState<string>("");
+  const [facingMode, setFacingMode] = useState<FacingMode>("environment");
   const containerId = "qr-reader-container";
 
-  // Keep callback refs fresh without triggering restarts
   useEffect(() => { onSuccessRef.current = onScanSuccess; }, [onScanSuccess]);
   useEffect(() => { onFailureRef.current = onScanFailure; }, [onScanFailure]);
 
-  // Initialize scanner instance and enumerate cameras once
+  // Create scanner instance once on mount
   useEffect(() => {
     scannerRef.current = new Html5Qrcode(containerId);
-
-    Html5Qrcode.getCameras()
-      .then((devices) => {
-        setCameras(devices);
-        // Prefer back/environment-facing camera
-        const back = devices.find((d) => /back|rear|environment/i.test(d.label));
-        setSelectedCameraId((back ?? devices[0])?.id ?? "");
-      })
-      .catch((err) => console.error("Failed to enumerate cameras", err));
 
     return () => {
       const scanner = scannerRef.current;
@@ -43,16 +35,15 @@ export function QrScanner({ onScanSuccess, onScanFailure }: QrScannerProps) {
     };
   }, []);
 
-  // Start or restart scanner whenever the selected camera changes
+  // Start / restart camera when facingMode changes
   useEffect(() => {
-    if (!selectedCameraId || !scannerRef.current) return;
-
     const scanner = scannerRef.current;
+    if (!scanner) return;
 
     const startCamera = () => {
       scanner
         .start(
-          selectedCameraId,
+          { facingMode },
           { fps: 10, qrbox: { width: 250, height: 250 } },
           (decodedText) => {
             scanner.pause(true);
@@ -74,31 +65,28 @@ export function QrScanner({ onScanSuccess, onScanFailure }: QrScannerProps) {
     } else {
       startCamera();
     }
-  }, [selectedCameraId]);
+  }, [facingMode]);
+
+  const flipCamera = () =>
+    setFacingMode((m) => (m === "environment" ? "user" : "environment"));
 
   return (
-    <div className="w-full max-w-sm mx-auto space-y-2">
-      {cameras.length > 1 && (
-        <div className="px-1">
-          <label className="block text-xs text-muted-foreground mb-1">Camera</label>
-          <select
-            value={selectedCameraId}
-            onChange={(e) => setSelectedCameraId(e.target.value)}
-            className="w-full bg-background text-foreground border border-border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            {cameras.map((cam) => (
-              <option key={cam.id} value={cam.id}>
-                {cam.label || `Camera ${cam.id.slice(0, 8)}`}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      <div className="overflow-hidden rounded-xl bg-background/50 backdrop-blur-sm border border-border/50">
+    <div className="w-full max-w-sm mx-auto">
+      <div className="relative overflow-hidden rounded-xl bg-background/50 backdrop-blur-sm border border-border/50">
         <div
           id={containerId}
-          className="w-full [&>video]:w-full [&>video]:rounded-lg [&>img]:hidden"
+          className="w-full [&>video]:w-full [&>video]:rounded-xl [&>img]:hidden"
         />
+        <Button
+          size="icon"
+          variant="secondary"
+          className="absolute bottom-3 right-3 h-9 w-9 rounded-full opacity-80 hover:opacity-100"
+          onClick={flipCamera}
+          type="button"
+          aria-label="Flip camera"
+        >
+          <SwitchCamera className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
