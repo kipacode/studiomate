@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { cn, getInitials, getRoleLabel } from "@/lib/utils";
@@ -14,6 +15,7 @@ import { toast } from "sonner";
 
 export default function CheckInPage() {
   const { user, isAuthenticated } = useAuth();
+  const router = useRouter();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [status, setStatus] = useState<"idle" | "checking" | "success">("idle");
   const [checkedIn, setCheckedIn] = useState(false);
@@ -50,7 +52,7 @@ export default function CheckInPage() {
       setStatus("success");
       setCheckedIn(true);
       setCheckInTime(new Date());
-      setTimeout(() => setStatus("idle"), 2000);
+      setTimeout(() => router.push("/me"), 2000);
     }, 1000);
   }
 
@@ -76,7 +78,7 @@ export default function CheckInPage() {
         setStatus("success");
         setCheckedIn(true);
         setCheckInTime(new Date());
-        setTimeout(() => setStatus("idle"), 2000);
+        setTimeout(() => router.push("/me"), 2000);
       } else {
         setStatus("idle");
         toast.error(data.error || "Invalid or expired QR Code");

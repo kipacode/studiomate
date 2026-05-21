@@ -3,11 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import {
-  getAttendanceStatus,
-  mockAttendance,
-  getAttendanceHistory,
-} from "@/lib/mock-data";
+import { getAttendanceHistory } from "@/lib/mock-data";
 import {
   cn,
   formatTime,
@@ -31,18 +27,42 @@ import {
 export default function MemberDashboardPage() {
   const { user } = useAuth();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [todayAttendance, setTodayAttendance] = useState<{
+    id: string;
+    checkInTime: string | null;
+    checkOutTime: string | null;
+    isLate: boolean;
+  } | null>(null);
+  const [checkingOut, setCheckingOut] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  const attendanceStatus = user ? getAttendanceStatus(user.id) : "not_yet";
-  const todayRecord = useMemo(() => {
-    if (!user) return null;
+  useEffect(() => {
+    if (!user) return;
     const today = new Date().toISOString().split("T")[0];
-    return mockAttendance.find((r) => r.userId === user.id && r.date === today) || null;
+    fetch(`/api/attendance?date=${today}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const record = d.attendance?.[0];
+        if (record) setTodayAttendance(record);
+      })
+      .catch(() => {});
   }, [user]);
+
+  async function handleCheckOut() {
+    setCheckingOut(true);
+    try {
+      const res = await fetch("/api/attendance/checkout", { method: "POST" });
+      if (res.ok) {
+        const d = await res.json();
+        setTodayAttendance(d.attendance);
+      }
+    } catch {}
+    setCheckingOut(false);
+  }
 
   const weekAttendance = useMemo(() => {
     if (!user) return [];
@@ -87,8 +107,8 @@ export default function MemberDashboardPage() {
   }, [user]);
 
   function getDurationSinceCheckIn(): string {
-    if (!todayRecord?.checkInTime) return "";
-    const checkIn = new Date(todayRecord.checkInTime);
+    if (!todayAttendance?.checkInTime) return "";
+    const checkIn = new Date(todayAttendance.checkInTime);
     const diff = currentTime.getTime() - checkIn.getTime();
     const hours = Math.floor(diff / 3600000);
     const minutes = Math.floor((diff % 3600000) / 60000);
@@ -103,8 +123,9 @@ export default function MemberDashboardPage() {
     );
   }
 
-  const isCheckedIn = attendanceStatus === "checked_in" || attendanceStatus === "late";
-  const isLate = attendanceStatus === "late";
+  const isCheckedIn = !!todayAttendance?.checkInTime && !todayAttendance?.checkOutTime;
+  const isCheckedOut = !!todayAttendance?.checkOutTime;
+  const isLate = todayAttendance?.isLate ?? false;
   const isIntern = user.role === "intern";
 
   return (
@@ -120,16 +141,18 @@ export default function MemberDashboardPage() {
                   className={cn(
                     "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
                     isCheckedIn && !isLate && "bg-emerald-400",
-                    isLate && "bg-amber-400",
-                    !isCheckedIn && "bg-neutral-400",
+                    isCheckedIn && isLate && "bg-amber-400",
+                    isCheckedOut && "bg-sky-400",
+                    !isCheckedIn && !isCheckedOut && "bg-neutral-400",
                   )}
                 />
                 <span
                   className={cn(
                     "relative inline-flex h-3 w-3 rounded-full",
                     isCheckedIn && !isLate && "bg-emerald-500",
-                    isLate && "bg-amber-500",
-                    !isCheckedIn && "bg-neutral-500",
+                    isCheckedIn && isLate && "bg-amber-500",
+                    isCheckedOut && "bg-sky-500",
+                    !isCheckedIn && !isCheckedOut && "bg-neutral-500",
                   )}
                 />
               </span>
@@ -137,26 +160,35 @@ export default function MemberDashboardPage() {
 
             <div>
               <h2 className="text-xl font-semibold text-white tracking-tight">
+                {isCheckedOut && "Checked Out"}
                 {isCheckedIn && !isLate && "You're Checked In"}
-                {isLate && "Checked In (Late)"}
-                {!isCheckedIn && "Not Checked In Yet"}
+                {isCheckedIn && isLate && "Checked In (Late)"}
+                {!isCheckedIn && !isCheckedOut && "Not Checked In Yet"}
               </h2>
-              {isCheckedIn ? (
+              {todayAttendance?.checkInTime ? (
                 <div className="mt-1 space-y-0.5">
                   <p className="text-sm text-neutral-400">
                     Check-in time:{" "}
                     <span className="font-medium text-neutral-200">
-                      {todayRecord?.checkInTime
-                        ? formatTime(new Date(todayRecord.checkInTime).toISOString())
-                        : "—"}
+                      {formatTime(new Date(todayAttendance.checkInTime).toISOString())}
                     </span>
                   </p>
-                  <p className="text-sm text-neutral-400">
-                    Duration:{" "}
-                    <span className="font-medium text-neutral-200">
-                      {getDurationSinceCheckIn()}
-                    </span>
-                  </p>
+                  {isCheckedIn && (
+                    <p className="text-sm text-neutral-400">
+                      Duration:{" "}
+                      <span className="font-medium text-neutral-200">
+                        {getDurationSinceCheckIn()}
+                      </span>
+                    </p>
+                  )}
+                  {todayAttendance.checkOutTime && (
+                    <p className="text-sm text-neutral-400">
+                      Check-out:{" "}
+                      <span className="font-medium text-neutral-200">
+                        {formatTime(new Date(todayAttendance.checkOutTime).toISOString())}
+                      </span>
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="mt-1 text-sm text-neutral-400">
@@ -180,12 +212,21 @@ export default function MemberDashboardPage() {
                 })}
               </p>
             </div>
-            {isCheckedIn ? (
-              <Button variant="outline" size="lg" className="gap-2">
-                <Link href="/check-in" className="flex items-center gap-2">
-                  <LogOut className="size-4" />
-                  Check Out
-                </Link>
+            {isCheckedOut ? (
+              <Button variant="ghost" size="lg" className="gap-2" disabled>
+                <LogOut className="size-4" />
+                Checked Out
+              </Button>
+            ) : isCheckedIn ? (
+              <Button
+                variant="outline"
+                size="lg"
+                className="gap-2"
+                onClick={handleCheckOut}
+                disabled={checkingOut}
+              >
+                <LogOut className="size-4" />
+                {checkingOut ? "Processing..." : "Check Out"}
               </Button>
             ) : (
               <Button size="lg" className="gap-2">
