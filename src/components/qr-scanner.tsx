@@ -31,7 +31,7 @@ export function QrScanner({ onScanSuccess, onScanFailure }: QrScannerProps) {
       const scanner = scannerRef.current;
       if (!scanner) return;
       const stop = isScanningRef.current ? scanner.stop() : Promise.resolve();
-      stop.catch(() => {}).finally(() => scanner.clear().catch(() => {}));
+      stop.catch(() => {}).finally(() => scanner.clear());
     };
   }, []);
 
