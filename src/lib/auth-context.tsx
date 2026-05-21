@@ -9,6 +9,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (username: string, password: string) => boolean;
+  loginFromAPI: (user: User) => void;
   loginAs: (role: UserRole) => void;
   logout: () => void;
   updateCurrentUser: (changes: Partial<User>) => void;
@@ -26,19 +27,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Restore session from localStorage
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        const found = mockUsers.find((u) => u.id === parsed.id);
-        if (found && found.status === "active") {
-          setUser(found);
+    async function restore() {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.fromAPI) {
+            // Verify session cookie is still valid and get fresh user data
+            const res = await fetch("/api/auth/me");
+            if (res.ok) {
+              const data = await res.json();
+              setUser(data.user);
+            } else {
+              localStorage.removeItem(STORAGE_KEY);
+            }
+          } else {
+            const found = mockUsers.find((u) => u.id === parsed.id);
+            if (found && found.status === "active") {
+              setUser(found);
+            }
+          }
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
+      setIsLoading(false);
     }
-    setIsLoading(false);
+    restore();
   }, []);
 
   const login = useCallback((username: string, _password: string): boolean => {
@@ -51,6 +66,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return true;
     }
     return false;
+  }, []);
+
+  const loginFromAPI = useCallback((apiUser: User) => {
+    setUser(apiUser);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ id: apiUser.id, fromAPI: true }));
   }, []);
 
   const loginAs = useCallback((role: UserRole) => {
@@ -82,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!user,
         isLoading,
         login,
+        loginFromAPI,
         loginAs,
         logout,
         updateCurrentUser,

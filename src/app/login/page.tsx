@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { loginFromAPI } = useAuth();
   const router = useRouter();
 
   async function handleLogin(e: React.FormEvent) {
@@ -24,36 +24,23 @@ export default function LoginPage() {
     }
     setLoading(true);
 
-    if (username === "admin") {
-      // Admin: authenticate against the real backend
-      try {
-        const res = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
-        });
-        if (res.ok) {
-          login(username, password); // sync client-side AuthContext
-          router.push("/dashboard");
-          return;
-        }
-        const data = await res.json().catch(() => ({}));
-        toast.error(data.error ?? "Invalid credentials.");
-      } catch {
-        toast.error("Could not reach the server. Is the database running?");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        loginFromAPI(data.user);
+        router.push(data.user.role === "admin" ? "/dashboard" : "/me");
+        return;
       }
-      setLoading(false);
-      return;
+      toast.error(data.error ?? "Invalid credentials.");
+    } catch {
+      toast.error("Could not reach the server. Is the database running?");
     }
-
-    // Non-admin: use mock login (no real password check needed yet)
-    const success = login(username, password);
-    if (success) {
-      router.push("/me");
-    } else {
-      toast.error("User not found or inactive.");
-      setLoading(false);
-    }
+    setLoading(false);
   }
 
   return (
