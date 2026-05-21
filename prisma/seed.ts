@@ -154,52 +154,6 @@ async function main() {
     }
   }
 
-  // ── Activity Logs ──────────────────────────────────────────────────
-  const taskTitles: Record<string, string[]> = {
-    design:      ["Landing page redesign", "Icon set update", "Brand guide revision", "UI mockup for client X", "Social media banner"],
-    research:    ["Competitor analysis", "User interview notes", "Market trend report", "UX benchmark study", "Tool evaluation"],
-    admin:       ["Weekly team meeting", "Invoice preparation", "Client follow-up", "Project timeline update", "Equipment inventory"],
-    content:     ["Blog post draft", "Portfolio copy update", "Case study write-up", "Newsletter content", "Social media caption"],
-    development: ["API endpoint refactor", "Bug fix: auth flow", "Database migration", "Frontend component library", "CI/CD pipeline setup"],
-    other:       ["Studio cleanup", "Team lunch coordination", "Workshop preparation", "Documentation update", "Onboarding new member"],
-  };
-
-  const activityUserIds = memberIds.slice(0, 7);
-  const categories = Object.keys(taskTitles);
-
-  for (const uid of activityUserIds) {
-    for (let i = 0; i < 7; i++) {
-      const date = daysAgo(i);
-      const dow = new Date(date).getDay();
-      if (dow === 0 || dow === 6) continue;
-
-      const numTasks = 2 + (Math.abs(hashCode(uid + date)) % 3);
-      for (let t = 0; t < numTasks; t++) {
-        const catIdx = Math.abs(hashCode(uid + date + String(t))) % categories.length;
-        const cat = categories[catIdx];
-        const titles = taskTitles[cat];
-        const titleIdx = Math.abs(hashCode(date + uid + String(t))) % titles.length;
-
-        const createdAt = new Date(date);
-        createdAt.setHours(8 + t, 0, 0, 0);
-
-        await prisma.activityLog.create({
-          data: {
-            userId: uid,
-            date,
-            taskTitle: titles[titleIdx],
-            category: cat as never,
-            description: t % 3 === 0 ? "Working on this task for the team deliverable." : undefined,
-            status: i === 0 && t === 0 ? "in_progress" : "done",
-            estimatedHours: 1 + (Math.abs(hashCode(uid + String(t))) % 4),
-            createdAt,
-            updatedAt: createdAt,
-          },
-        });
-      }
-    }
-  }
-
   console.log("Seed complete.");
   console.log("  admin  → username: admin    / password: admin123");
   console.log("  member → username: moza     / password: studio123");
