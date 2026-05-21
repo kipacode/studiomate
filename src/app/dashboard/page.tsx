@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Users, UserX, Clock, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,13 +20,6 @@ import {
 } from "@/components/ui/chart";
 import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import {
-  getDashboardSummary,
-  getTodayAttendance,
-  getActiveMembers,
-  getAttendanceStatus,
-  getWeeklyAttendanceCounts,
-} from "@/lib/mock-data";
-import {
   cn,
   formatTime,
   getStatusColor,
@@ -34,17 +28,111 @@ import {
   getRoleLabel,
   getInitials,
 } from "@/lib/utils";
+import type { User } from "@/lib/types";
+
+// ── Types ──────────────────────────────────────────────────────────
+
+interface AttendanceRecord {
+  id: string;
+  userId: string;
+  date: string;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  isLate: boolean;
+  user: User;
+}
+
+interface DashboardSummary {
+  totalPresent: number;
+  totalAbsent: number;
+  totalLate: number;
+  recentCheckIns: number;
+  totalMembers: number;
+}
+
+interface WeeklyData {
+  day: string;
+  present: number;
+  late: number;
+}
+
+type AttendanceStatus = "checked_in" | "late" | "checked_out" | "not_yet";
+
+function getStatus(record: AttendanceRecord | undefined): AttendanceStatus {
+  if (!record || !record.checkInTime) return "not_yet";
+  if (record.checkOutTime) return "checked_out";
+  if (record.isLate) return "late";
+  return "checked_in";
+}
+
+// ── Chart config ───────────────────────────────────────────────────
 
 const chartConfig = {
   present: { label: "Present", color: "oklch(0.75 0.15 170)" },
   late: { label: "Late", color: "oklch(0.75 0.15 60)" },
 };
 
+// ── Dashboard Page ─────────────────────────────────────────────────
+
 export default function AdminDashboard() {
-  const summary = getDashboardSummary();
-  const todayAttendance = getTodayAttendance();
-  const weeklyData = getWeeklyAttendanceCounts();
-  const members = getActiveMembers().filter((u) => u.role !== "freelancer");
+  const [summary, setSummary] = useState<DashboardSummary>({
+    totalPresent: 0,
+    totalAbsent: 0,
+    totalLate: 0,
+    recentCheckIns: 0,
+    totalMembers: 0,
+  });
+  const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>([]);
+  const [weeklyData, setWeeklyData] = useState<WeeklyData[]>([]);
+  const [allMembers, setAllMembers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [dashRes, usersRes] = await Promise.all([
+          fetch("/api/dashboard"),
+          fetch("/api/users"),
+        ]);
+
+        if (dashRes.ok) {
+          const data = await dashRes.json();
+          setSummary(data.summary);
+          setTodayAttendance(data.todayAttendance ?? []);
+          setWeeklyData(data.weeklyData ?? []);
+        }
+
+        if (usersRes.ok) {
+          const data = await usersRes.json();
+          const members = (data.users as User[]).filter(
+            (u) => u.role !== "admin" && u.role !== "freelancer" && u.status === "active"
+          );
+          setAllMembers(members);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  // Build member rows — all active members, matched with today's attendance
+  const memberRows = allMembers.map((member) => {
+    const attendance = todayAttendance.find((a) => a.userId === member.id);
+    const status = getStatus(attendance);
+    return { member, attendance, status };
+  });
+
+  // Sort: present/late first, then not yet
+  const statusOrder: Record<AttendanceStatus, number> = {
+    checked_in: 0,
+    late: 1,
+    checked_out: 2,
+    not_yet: 3,
+  };
+  memberRows.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 
   const summaryCards = [
     {
@@ -77,19 +165,6 @@ export default function AdminDashboard() {
     },
   ];
 
-  // Build member attendance list
-  const memberRows = members.map((member) => {
-    const attendance = todayAttendance.find((a) => a.userId === member.id);
-    const status = getAttendanceStatus(member.id);
-    return { member, attendance, status };
-  });
-
-  // Sort: present first, then not yet
-  memberRows.sort((a, b) => {
-    const order = { checked_in: 0, late: 1, checked_out: 2, not_yet: 3 };
-    return order[a.status] - order[b.status];
-  });
-
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Summary Cards */}
@@ -100,7 +175,7 @@ export default function AdminDashboard() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-3xl font-semibold animate-counter">
-                    {card.value}
+                    {loading ? "—" : card.value}
                   </p>
                   <p className="text-sm text-muted-foreground mt-1">
                     {card.label}
@@ -142,44 +217,57 @@ export default function AdminDashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {memberRows.map(({ member, attendance, status }) => (
-                  <TableRow key={member.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-7 w-7">
-                          <AvatarFallback className="text-[10px] bg-muted">
-                            {getInitials(member.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="text-sm font-medium">
-                          {member.name}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "text-[10px]",
-                          getRoleColor(member.role)
-                        )}
-                      >
-                        {getRoleLabel(member.role)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {attendance ? formatTime(attendance.checkInTime) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn("text-[10px]", getStatusColor(status))}
-                      >
-                        {getStatusLabel(status)}
-                      </Badge>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
+                      Loading...
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : memberRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
+                      No active members found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  memberRows.map(({ member, attendance, status }) => (
+                    <TableRow key={member.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-7 w-7">
+                            <AvatarFallback className="text-[10px] bg-muted">
+                              {getInitials(member.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-medium">
+                            {member.name}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn("text-[10px]", getRoleColor(member.role))}
+                        >
+                          {getRoleLabel(member.role)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {attendance?.checkInTime
+                          ? formatTime(attendance.checkInTime)
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={cn("text-[10px]", getStatusColor(status))}
+                        >
+                          {getStatusLabel(status)}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -225,7 +313,6 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
-
     </div>
   );
 }

@@ -1,22 +1,15 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Eye,
   Mail,
   Calendar,
-  Briefcase,
   Cake,
-  CheckCircle2,
-  XCircle,
 } from 'lucide-react';
-import {
-  getAttendanceStatus,
-  getAttendanceHistory,
-} from '@/lib/mock-data';
 import { useUsers } from '@/lib/users-context';
-import type { User, Attendance } from '@/lib/types';
+import type { User } from '@/lib/types';
 import {
   cn,
   formatTime,
@@ -30,7 +23,7 @@ import {
   getInternDaysRemaining,
   todayStr,
 } from '@/lib/utils';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -43,7 +36,7 @@ import {
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -54,6 +47,26 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 
+// ── Types ────────────────────────────────────────────────────────────
+
+interface AttendanceRecord {
+  id: string;
+  userId: string;
+  date: string;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  isLate: boolean;
+}
+
+type AttendanceStatus = 'checked_in' | 'late' | 'checked_out' | 'not_yet';
+
+function resolveStatus(record?: AttendanceRecord): AttendanceStatus {
+  if (!record || !record.checkInTime) return 'not_yet';
+  if (record.checkOutTime) return 'checked_out';
+  if (record.isLate) return 'late';
+  return 'checked_in';
+}
+
 // ── Member Detail Dialog ────────────────────────────────────────────
 
 interface MemberDialogProps {
@@ -63,10 +76,27 @@ interface MemberDialogProps {
 }
 
 function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
-  if (!user) return null;
+  const [history, setHistory] = useState<AttendanceRecord[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
-  const status = getAttendanceStatus(user.id);
-  const attendanceHistory = getAttendanceHistory(user.id, 5);
+  useEffect(() => {
+    if (!user || !open) return;
+    setLoadingHistory(true);
+    fetch(`/api/attendance?userId=${user.id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const sorted = (data.attendance ?? [])
+          .sort((a: AttendanceRecord, b: AttendanceRecord) =>
+            b.date.localeCompare(a.date)
+          )
+          .slice(0, 5);
+        setHistory(sorted);
+      })
+      .catch(() => setHistory([]))
+      .finally(() => setLoadingHistory(false));
+  }, [user, open]);
+
+  if (!user) return null;
 
   const internProgress =
     user.role === 'intern' && user.internshipStart && user.internshipEnd
@@ -151,11 +181,13 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Recent Attendance (Last 5 days)
           </h4>
-          {attendanceHistory.length === 0 ? (
+          {loadingHistory ? (
+            <p className="text-xs text-muted-foreground py-2">Loading…</p>
+          ) : history.length === 0 ? (
             <p className="text-xs text-muted-foreground py-2">No attendance records found.</p>
           ) : (
             <div className="space-y-1">
-              {attendanceHistory.map((record) => (
+              {history.map((record) => (
                 <div
                   key={record.id}
                   className="flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs hover:bg-white/[0.03]"
@@ -182,7 +214,6 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
             </div>
           )}
         </div>
-
       </DialogContent>
     </Dialog>
   );
@@ -190,9 +221,15 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
 
 // ── Members Table Row ───────────────────────────────────────────────
 
-function MemberRow({ user, onView }: { user: User; onView: (u: User) => void }) {
-  const status = getAttendanceStatus(user.id);
-
+function MemberRow({
+  user,
+  status,
+  onView,
+}: {
+  user: User;
+  status: AttendanceStatus;
+  onView: (u: User) => void;
+}) {
   return (
     <TableRow className="border-white/[0.04] transition-colors hover:bg-white/[0.03]">
       <TableCell>
@@ -255,8 +292,15 @@ export default function MembersPage() {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>([]);
 
-  // Filter out admin users — they are not "team members"
+  useEffect(() => {
+    fetch(`/api/attendance?date=${todayStr()}`)
+      .then((r) => r.json())
+      .then((data) => setTodayAttendance(data.attendance ?? []))
+      .catch(() => {});
+  }, []);
+
   const allMembers = useMemo(
     () => users.filter((u) => u.role !== 'admin'),
     [users],
@@ -330,9 +374,13 @@ export default function MembersPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredMembers.map((user) => (
-                  <MemberRow key={user.id} user={user} onView={handleView} />
-                ))
+                filteredMembers.map((user) => {
+                  const record = todayAttendance.find((a) => a.userId === user.id);
+                  const status = resolveStatus(record);
+                  return (
+                    <MemberRow key={user.id} user={user} status={status} onView={handleView} />
+                  );
+                })
               )}
             </TableBody>
           </Table>
