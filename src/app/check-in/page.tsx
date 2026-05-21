@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { getAttendanceStatus } from "@/lib/mock-data";
 import { cn, getInitials, getRoleLabel } from "@/lib/utils";
 import { Check, Clock, ArrowLeft, LogIn, LogOut } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { QrScanner } from "@/components/qr-scanner";
 import { toast } from "sonner";
-import { mockQRTokens } from "@/lib/mock-data";
 
 export default function CheckInPage() {
   const { user, isAuthenticated } = useAuth();
@@ -29,15 +27,19 @@ export default function CheckInPage() {
   }, []);
 
   useEffect(() => {
-    if (user) {
-      const s = getAttendanceStatus(user.id);
-      if (s === "checked_in" || s === "late") {
-        setCheckedIn(true);
-      } else if (s === "checked_out") {
-        setCheckedIn(true);
-        setCheckedOut(true);
-      }
-    }
+    if (!user) return;
+    const today = new Date().toISOString().split("T")[0];
+    fetch(`/api/attendance?date=${today}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const record = d.attendance?.[0];
+        if (record?.checkInTime) {
+          setCheckedIn(true);
+          setCheckInTime(new Date(record.checkInTime));
+        }
+        if (record?.checkOutTime) setCheckedOut(true);
+      })
+      .catch(() => {});
   }, [user]);
 
   const isLateNow = currentTime.getHours() >= 8;
@@ -60,13 +62,28 @@ export default function CheckInPage() {
     }, 1000);
   }
 
-  function handleScanSuccess(decodedText: string) {
-    const validToken = mockQRTokens.find(t => t.isActive)?.token;
-    if (decodedText === validToken) {
-      setIsScanning(false);
-      handleCheckIn();
-    } else {
-      toast.error("Invalid or expired QR Code");
+  async function handleScanSuccess(decodedText: string) {
+    setIsScanning(false);
+    setStatus("checking");
+    try {
+      const res = await fetch("/api/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ qrToken: decodedText }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setStatus("success");
+        setCheckedIn(true);
+        setCheckInTime(new Date());
+        setTimeout(() => setStatus("idle"), 2000);
+      } else {
+        setStatus("idle");
+        toast.error(data.error || "Invalid or expired QR Code");
+      }
+    } catch {
+      setStatus("idle");
+      toast.error("Failed to check in. Please try again.");
     }
   }
 

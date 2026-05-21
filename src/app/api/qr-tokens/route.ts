@@ -6,6 +6,27 @@ export async function GET() {
   const session = await verifySession();
   if (!session) return Response.json({ error: "Unauthenticated" }, { status: 401 });
 
+  if (session.role === "admin") {
+    const today = new Date().toISOString().split("T")[0];
+    const activeExists = await prisma.qRToken.findFirst({
+      where: { validDate: today, isActive: true },
+    });
+    if (!activeExists) {
+      const dateStr = today.replace(/-/g, "");
+      const tokenStr = `KIPA-${dateStr}-STUDIO`;
+      await prisma.qRToken.upsert({
+        where: { token: tokenStr },
+        update: { isActive: true },
+        create: {
+          token: tokenStr,
+          validDate: today,
+          createdBy: session.userId,
+          isActive: true,
+        },
+      });
+    }
+  }
+
   const tokens = await prisma.qRToken.findMany({
     orderBy: { createdAt: "desc" },
   });

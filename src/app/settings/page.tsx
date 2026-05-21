@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Users,
   QrCode,
@@ -47,7 +47,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { User, UserRole, QRToken, Location } from "@/lib/types";
-import { mockQRTokens, mockLocations } from "@/lib/mock-data";
+import { mockLocations } from "@/lib/mock-data";
 import { useUsers } from "@/lib/users-context";
 import {
   cn,
@@ -429,28 +429,57 @@ function UserManagementTab() {
 // ── QR Code Tab ──────────────────────────────────────────────────
 
 function QRCodeTab() {
-  const [tokens, setTokens] = useState<QRToken[]>(mockQRTokens);
+  const [tokens, setTokens] = useState<QRToken[]>([]);
+  const [loadingTokens, setLoadingTokens] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
   const activeToken = tokens.find(
     (t) => t.validDate === todayStr() && t.isActive
   );
 
-  function generateToken() {
-    const newToken: QRToken = {
-      id: `qr-${Date.now()}`,
-      token: `KIPA-${todayStr().replace(/-/g, "")}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-      validDate: todayStr(),
-      createdBy: "u-001",
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    };
-    setTokens((prev) =>
-      prev.map((t) =>
-        t.validDate === todayStr() ? { ...t, isActive: false } : t
-      ).concat(newToken)
+  useEffect(() => {
+    fetch("/api/qr-tokens")
+      .then((r) => r.json())
+      .then((d) => setTokens(d.tokens ?? []))
+      .catch(() => toast.error("Failed to load tokens"))
+      .finally(() => setLoadingTokens(false));
+  }, []);
+
+  useEffect(() => {
+    if (!activeToken) {
+      setQrDataUrl("");
+      return;
+    }
+    import("qrcode").then((mod) =>
+      mod.default.toDataURL(activeToken.token, { width: 192, margin: 2, color: { dark: "#171717", light: "#ffffff" } })
+        .then(setQrDataUrl)
+        .catch(() => setQrDataUrl(""))
     );
-    toast.success("New QR token generated");
+  }, [activeToken?.token]);
+
+  async function generateToken() {
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/qr-tokens", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ validDate: todayStr() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate");
+      setTokens((prev) =>
+        prev.map((t) =>
+          t.validDate === todayStr() ? { ...t, isActive: false } : t
+        ).concat(data.token)
+      );
+      toast.success("New QR token generated");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate token");
+    } finally {
+      setGenerating(false);
+    }
   }
 
   function copyToken(token: string) {
@@ -469,8 +498,8 @@ function QRCodeTab() {
             Generate and manage daily check-in QR codes
           </p>
         </div>
-        <Button onClick={generateToken} size="sm">
-          <RefreshCw className="h-4 w-4 mr-2" />
+        <Button onClick={generateToken} size="sm" disabled={generating}>
+          <RefreshCw className={cn("h-4 w-4 mr-2", generating && "animate-spin")} />
           Generate New Token
         </Button>
       </div>
@@ -478,34 +507,18 @@ function QRCodeTab() {
       <Card className="overflow-hidden">
         <CardContent className="p-8">
           <div className="flex flex-col items-center gap-6">
-            {/* QR Code Visual Representation */}
-            <div className="relative w-48 h-48 bg-white rounded-xl flex items-center justify-center p-4">
-              <div className="grid grid-cols-8 gap-0.5 w-full h-full">
-                {Array.from({ length: 64 }).map((_, i) => {
-                  const isCorner =
-                    (i < 3 || (i >= 5 && i < 8)) &&
-                    (Math.floor(i / 8) < 3 || Math.floor(i / 8) >= 5);
-                  const isFilled =
-                    isCorner ||
-                    Math.abs(
-                      Math.sin(i * 2.5 + (activeToken?.token.length || 0))
-                    ) > 0.4;
-                  return (
-                    <div
-                      key={i}
-                      className={cn(
-                        "rounded-[1px]",
-                        isFilled ? "bg-neutral-900" : "bg-neutral-100"
-                      )}
-                    />
-                  );
-                })}
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-white px-2 py-1 rounded text-[8px] font-mono text-neutral-900 font-bold">
-                  KIPA
+            {/* Real scannable QR code */}
+            <div className="w-48 h-48 rounded-xl overflow-hidden bg-white flex items-center justify-center">
+              {loadingTokens ? (
+                <div className="text-muted-foreground text-sm">Loading...</div>
+              ) : qrDataUrl ? (
+                <img src={qrDataUrl} alt="Check-in QR Code" className="w-full h-full" />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-muted-foreground p-4 text-center">
+                  <QrCode className="h-12 w-12 opacity-30" />
+                  <span className="text-xs">No active token for today</span>
                 </div>
-              </div>
+              )}
             </div>
 
             {activeToken ? (
@@ -542,7 +555,7 @@ function QRCodeTab() {
                 <p className="text-muted-foreground">
                   No active token for today
                 </p>
-                <Button onClick={generateToken} size="sm">
+                <Button onClick={generateToken} size="sm" disabled={generating}>
                   Generate Token
                 </Button>
               </div>
