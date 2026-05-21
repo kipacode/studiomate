@@ -21,7 +21,6 @@ import { Bar, BarChart, XAxis, YAxis } from "recharts";
 import {
   getDashboardSummary,
   getTodayAttendance,
-  getAllTodayActivities,
   getActiveMembers,
   getAttendanceStatus,
   getWeeklyAttendanceCounts,
@@ -29,13 +28,10 @@ import {
 import {
   cn,
   formatTime,
-  formatRelativeTime,
   getStatusColor,
   getStatusLabel,
   getRoleColor,
   getRoleLabel,
-  getCategoryColor,
-  getCategoryLabel,
   getInitials,
 } from "@/lib/utils";
 
@@ -47,7 +43,6 @@ const chartConfig = {
 export default function AdminDashboard() {
   const summary = getDashboardSummary();
   const todayAttendance = getTodayAttendance();
-  const todayActivities = getAllTodayActivities().slice(0, 8);
   const weeklyData = getWeeklyAttendanceCounts();
   const members = getActiveMembers().filter((u) => u.role !== "freelancer");
 
@@ -231,58 +226,6 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      {/* Activity Feed */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-medium">
-            Recent Activity
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3 max-h-[320px] overflow-y-auto">
-            {todayActivities.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No activities logged yet today
-              </p>
-            ) : (
-              todayActivities.map((activity) => (
-                <div
-                  key={activity.id}
-                  className="flex items-start gap-3 py-2 border-b border-border/30 last:border-0"
-                >
-                  <Avatar className="h-7 w-7 shrink-0">
-                    <AvatarFallback className="text-[10px] bg-muted">
-                      {getInitials(activity.user.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">
-                        {activity.user.name}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "text-[10px]",
-                          getCategoryColor(activity.category)
-                        )}
-                      >
-                        {getCategoryLabel(activity.category)}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {activity.taskTitle}
-                    </p>
-                  </div>
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {formatRelativeTime(activity.createdAt)}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   Users,
   QrCode,
-  Tag,
   MapPin,
   Plus,
   Search,
@@ -48,7 +47,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { User, UserRole, QRToken, Location } from "@/lib/types";
-import { mockQRTokens, mockLocations, activityCategories } from "@/lib/mock-data";
+import { mockQRTokens, mockLocations } from "@/lib/mock-data";
 import { useUsers } from "@/lib/users-context";
 import {
   cn,
@@ -602,137 +601,6 @@ function QRCodeTab() {
   );
 }
 
-// ── Categories Tab ───────────────────────────────────────────────
-
-function CategoriesTab() {
-  const [categories, setCategories] = useState<Array<{ value: string; label: string; isDefault?: boolean }>>(
-    activityCategories.map((c) => ({ ...c, isDefault: true }))
-  );
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [newCategory, setNewCategory] = useState("");
-
-  const categoryColors = [
-    "bg-pink-500/15 text-pink-400 border-pink-500/20",
-    "bg-indigo-500/15 text-indigo-400 border-indigo-500/20",
-    "bg-neutral-500/15 text-neutral-400 border-neutral-500/20",
-    "bg-orange-500/15 text-orange-400 border-orange-500/20",
-    "bg-cyan-500/15 text-cyan-400 border-cyan-500/20",
-    "bg-stone-500/15 text-stone-400 border-stone-500/20",
-    "bg-violet-500/15 text-violet-400 border-violet-500/20",
-    "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
-  ];
-
-  function addCategory() {
-    if (!newCategory.trim()) return;
-    setCategories((prev) => [
-      ...prev,
-      {
-        value: newCategory.toLowerCase().replace(/\s+/g, "_"),
-        label: newCategory,
-        isDefault: false,
-      },
-    ]);
-    setNewCategory("");
-    setDialogOpen(false);
-    toast.success("Category added");
-  }
-
-  function deleteCategory(value: string) {
-    const cat = categories.find((c) => c.value === value);
-    if (cat?.isDefault) {
-      toast.error("Default categories cannot be deleted");
-      return;
-    }
-    setCategories((prev) => prev.filter((c) => c.value !== value));
-    toast.success("Category deleted");
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">Activity Categories</h2>
-          <p className="text-sm text-muted-foreground">
-            Manage categories for activity logs
-          </p>
-        </div>
-        <Button onClick={() => setDialogOpen(true)} size="sm">
-          <Plus className="h-4 w-4 mr-2" />
-          Add Category
-        </Button>
-      </div>
-
-      <div className="grid gap-3">
-        {categories.map((cat, i) => (
-          <Card key={cat.value}>
-            <CardContent className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-sm",
-                    categoryColors[i % categoryColors.length]
-                  )}
-                >
-                  {cat.label}
-                </Badge>
-                {cat.isDefault && (
-                  <span className="text-xs text-muted-foreground">
-                    Default
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => toast.info("Edit coming soon")}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-destructive"
-                  onClick={() => deleteCategory(cat.value)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Category</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Category Name</Label>
-              <Input
-                value={newCategory}
-                onChange={(e) => setNewCategory(e.target.value)}
-                placeholder="e.g., Marketing"
-                onKeyDown={(e) => e.key === "Enter" && addCategory()}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={addCategory}>Add Category</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
 // ── Location Tab ─────────────────────────────────────────────────
 
 function LocationTab() {
@@ -911,10 +779,6 @@ export default function SettingsPage() {
             <QrCode className="h-4 w-4" />
             QR Code
           </TabsTrigger>
-          <TabsTrigger value="categories" className="gap-2">
-            <Tag className="h-4 w-4" />
-            Categories
-          </TabsTrigger>
           <TabsTrigger value="location" className="gap-2">
             <MapPin className="h-4 w-4" />
             Location
@@ -926,9 +790,6 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="qr">
           <QRCodeTab />
-        </TabsContent>
-        <TabsContent value="categories">
-          <CategoriesTab />
         </TabsContent>
         <TabsContent value="location">
           <LocationTab />

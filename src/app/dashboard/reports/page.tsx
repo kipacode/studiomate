@@ -3,7 +3,6 @@
 import { useState, useMemo } from 'react';
 import {
   CalendarDays,
-  ClipboardList,
   GraduationCap,
   Download,
   FileText,
@@ -13,18 +12,13 @@ import { toast } from 'sonner';
 import {
   mockUsers,
   mockAttendance,
-  mockActivities,
-  getAttendanceHistory,
-  getUserActivities,
 } from '@/lib/mock-data';
-import type { User, Attendance, ActivityLog, ActivityCategory } from '@/lib/types';
+import type { User, Attendance } from '@/lib/types';
 import {
   cn,
   formatDate,
   getRoleColor,
   getRoleLabel,
-  getCategoryColor,
-  getCategoryLabel,
   getInitials,
   getInternProgress,
 } from '@/lib/utils';
@@ -50,7 +44,7 @@ import {
 
 // ── Types ───────────────────────────────────────────────────────────
 
-type ReportType = 'attendance' | 'activity' | 'intern';
+type ReportType = 'attendance' | 'intern';
 
 interface ReportTypeOption {
   id: ReportType;
@@ -69,18 +63,10 @@ interface AttendanceReportRow {
   totalHours: number;
 }
 
-interface ActivityReportRow {
-  user: User;
-  tasksCompleted: number;
-  hoursLogged: number;
-  topCategory: string;
-}
-
 interface InternReportRow {
   user: User;
   daysPresent: number;
   daysLate: number;
-  tasksDone: number;
   progress: number;
 }
 
@@ -94,14 +80,6 @@ const reportTypes: ReportTypeOption[] = [
     icon: CalendarDays,
     accentClass: 'text-sky-400',
     iconBgClass: 'bg-sky-500/10',
-  },
-  {
-    id: 'activity',
-    title: 'Activity Report',
-    description: 'Activity logs and productivity',
-    icon: ClipboardList,
-    accentClass: 'text-emerald-400',
-    iconBgClass: 'bg-emerald-500/10',
   },
   {
     id: 'intern',
@@ -150,46 +128,21 @@ function getAttendanceReport(userIds: string[], from: string, to: string): Atten
   });
 }
 
-function getActivityReport(userIds: string[], from: string, to: string): ActivityReportRow[] {
-  return userIds.map((userId) => {
-    const user = mockUsers.find((u) => u.id === userId)!;
-    const logs = mockActivities.filter(
-      (l) => l.userId === userId && l.date >= from && l.date <= to,
-    );
-
-    const tasksCompleted = logs.filter((l) => l.status === 'done').length;
-    const hoursLogged = logs.reduce((sum, l) => sum + l.estimatedHours, 0);
-
-    // Find top category
-    const categoryCount: Record<string, number> = {};
-    logs.forEach((l) => {
-      categoryCount[l.category] = (categoryCount[l.category] || 0) + 1;
-    });
-    const topCategory = Object.entries(categoryCount).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
-
-    return { user, tasksCompleted, hoursLogged: Math.round(hoursLogged * 10) / 10, topCategory };
-  });
-}
-
 function getInternReport(userIds: string[], from: string, to: string): InternReportRow[] {
   return userIds.map((userId) => {
     const user = mockUsers.find((u) => u.id === userId)!;
     const records = mockAttendance.filter(
       (r) => r.userId === userId && r.date >= from && r.date <= to,
     );
-    const logs = mockActivities.filter(
-      (l) => l.userId === userId && l.date >= from && l.date <= to,
-    );
 
     const daysPresent = records.filter((r) => r.checkInTime !== null).length;
     const daysLate = records.filter((r) => r.isLate).length;
-    const tasksDone = logs.filter((l) => l.status === 'done').length;
     const progress =
       user.internshipStart && user.internshipEnd
         ? getInternProgress(user.internshipStart, user.internshipEnd)
         : 0;
 
-    return { user, daysPresent, daysLate, tasksDone, progress };
+    return { user, daysPresent, daysLate, progress };
   });
 }
 
@@ -225,11 +178,6 @@ export default function ReportsPage() {
   const attendanceReport = useMemo(() => {
     if (!generated || selectedType !== 'attendance') return [];
     return getAttendanceReport(targetUserIds, dateFrom, dateTo);
-  }, [generated, selectedType, targetUserIds, dateFrom, dateTo]);
-
-  const activityReport = useMemo(() => {
-    if (!generated || selectedType !== 'activity') return [];
-    return getActivityReport(targetUserIds, dateFrom, dateTo);
   }, [generated, selectedType, targetUserIds, dateFrom, dateTo]);
 
   const internReport = useMemo(() => {
@@ -396,55 +344,6 @@ export default function ReportsPage() {
         </ReportResultCard>
       )}
 
-      {generated && selectedType === 'activity' && (
-        <ReportResultCard
-          title="Activity Report"
-          onExport={handleExport}
-        >
-          <Table>
-            <TableHeader>
-              <TableRow className="border-white/[0.06] hover:bg-transparent">
-                <TableHead className="text-xs text-muted-foreground">Name</TableHead>
-                <TableHead className="text-xs text-muted-foreground text-right">Tasks Completed</TableHead>
-                <TableHead className="text-xs text-muted-foreground text-right">Hours Logged</TableHead>
-                <TableHead className="text-xs text-muted-foreground">Top Category</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {activityReport.map((row) => (
-                <TableRow key={row.user.id} className="border-white/[0.04] hover:bg-white/[0.03]">
-                  <TableCell className="font-medium">{row.user.name}</TableCell>
-                  <TableCell className="text-right text-emerald-400">{row.tasksCompleted}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{row.hoursLogged}h</TableCell>
-                  <TableCell>
-                    {row.topCategory !== '—' ? (
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-[10px]',
-                          getCategoryColor(row.topCategory as ActivityCategory),
-                        )}
-                      >
-                        {getCategoryLabel(row.topCategory as ActivityCategory)}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-              {activityReport.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
-                    No activity data found for the selected range.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </ReportResultCard>
-      )}
-
       {generated && selectedType === 'intern' && (
         <ReportResultCard
           title="Intern Report"
@@ -456,7 +355,6 @@ export default function ReportsPage() {
                 <TableHead className="text-xs text-muted-foreground">Name</TableHead>
                 <TableHead className="text-xs text-muted-foreground text-right">Days Present</TableHead>
                 <TableHead className="text-xs text-muted-foreground text-right">Days Late</TableHead>
-                <TableHead className="text-xs text-muted-foreground text-right">Tasks Done</TableHead>
                 <TableHead className="text-xs text-muted-foreground text-right">Progress %</TableHead>
               </TableRow>
             </TableHeader>
@@ -466,7 +364,6 @@ export default function ReportsPage() {
                   <TableCell className="font-medium">{row.user.name}</TableCell>
                   <TableCell className="text-right text-emerald-400">{row.daysPresent}</TableCell>
                   <TableCell className="text-right text-amber-400">{row.daysLate}</TableCell>
-                  <TableCell className="text-right text-sky-400">{row.tasksDone}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/[0.06]">
@@ -482,7 +379,7 @@ export default function ReportsPage() {
               ))}
               {internReport.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
                     No intern data found for the selected range.
                   </TableCell>
                 </TableRow>

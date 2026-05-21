@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { AttendanceStatus, UserRole, ActivityCategory } from "./types";
+import { AttendanceStatus, UserRole } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -94,27 +94,6 @@ export function getRoleColor(role: UserRole): string {
     case "freelancer":
       return "bg-emerald-500/15 text-emerald-400 border-emerald-500/20";
   }
-}
-
-export function getCategoryColor(cat: ActivityCategory): string {
-  switch (cat) {
-    case "design":
-      return "bg-pink-500/15 text-pink-400 border-pink-500/20";
-    case "research":
-      return "bg-indigo-500/15 text-indigo-400 border-indigo-500/20";
-    case "admin":
-      return "bg-neutral-500/15 text-neutral-400 border-neutral-500/20";
-    case "content":
-      return "bg-orange-500/15 text-orange-400 border-orange-500/20";
-    case "development":
-      return "bg-cyan-500/15 text-cyan-400 border-cyan-500/20";
-    case "other":
-      return "bg-stone-500/15 text-stone-400 border-stone-500/20";
-  }
-}
-
-export function getCategoryLabel(cat: ActivityCategory): string {
-  return cat.charAt(0).toUpperCase() + cat.slice(1);
 }
 
 // ── User Helpers ───────────────────────────────────────────────────

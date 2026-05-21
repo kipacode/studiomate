@@ -14,10 +14,9 @@ import {
 import {
   getAttendanceStatus,
   getAttendanceHistory,
-  getUserActivities,
 } from '@/lib/mock-data';
 import { useUsers } from '@/lib/users-context';
-import type { User, Attendance, ActivityLog, AttendanceStatus as TAttendanceStatus } from '@/lib/types';
+import type { User, Attendance } from '@/lib/types';
 import {
   cn,
   formatTime,
@@ -26,8 +25,6 @@ import {
   getStatusLabel,
   getRoleColor,
   getRoleLabel,
-  getCategoryColor,
-  getCategoryLabel,
   getInitials,
   getInternProgress,
   getInternDaysRemaining,
@@ -70,7 +67,6 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
 
   const status = getAttendanceStatus(user.id);
   const attendanceHistory = getAttendanceHistory(user.id, 5);
-  const activities = getUserActivities(user.id).slice(0, 5);
 
   const internProgress =
     user.role === 'intern' && user.internshipStart && user.internshipEnd
@@ -187,44 +183,6 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
           )}
         </div>
 
-        <Separator className="bg-white/[0.06]" />
-
-        {/* Recent Activities */}
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Recent Activities
-          </h4>
-          {activities.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2">No activities logged.</p>
-          ) : (
-            <div className="space-y-1">
-              {activities.map((act) => (
-                <div
-                  key={act.id}
-                  className="flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs hover:bg-white/[0.03]"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-medium truncate">{act.taskTitle}</span>
-                    <Badge variant="outline" className={cn('text-[10px] shrink-0', getCategoryColor(act.category))}>
-                      {getCategoryLabel(act.category)}
-                    </Badge>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'text-[10px] shrink-0 ml-2',
-                      act.status === 'done'
-                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
-                        : 'bg-sky-500/15 text-sky-400 border-sky-500/20',
-                    )}
-                  >
-                    {act.status === 'done' ? 'Done' : 'In Progress'}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </DialogContent>
     </Dialog>
   );

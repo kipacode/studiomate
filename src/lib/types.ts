@@ -1,15 +1,7 @@
 // ── Role & Category Types ──────────────────────────────────────────
 
 export type UserRole = "admin" | "employee" | "intern" | "freelancer";
-export type ActivityCategory =
-  | "design"
-  | "research"
-  | "admin"
-  | "content"
-  | "development"
-  | "other";
 export type AttendanceStatus = "checked_in" | "checked_out" | "not_yet" | "late";
-export type ActivityStatus = "in_progress" | "done";
 
 // ── Data Models ────────────────────────────────────────────────────
 
@@ -54,19 +46,6 @@ export interface Attendance {
   flagNote?: string;
 }
 
-export interface ActivityLog {
-  id: string;
-  userId: string;
-  date: string;
-  taskTitle: string;
-  category: ActivityCategory;
-  description?: string;
-  status: ActivityStatus;
-  estimatedHours: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface QRToken {
   id: string;
   token: string;
@@ -87,9 +66,5 @@ export interface DashboardSummary {
 }
 
 export interface AttendanceWithUser extends Attendance {
-  user: User;
-}
-
-export interface ActivityLogWithUser extends ActivityLog {
   user: User;
 }

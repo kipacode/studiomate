@@ -1,13 +1,11 @@
 import {
   User,
   Attendance,
-  ActivityLog,
   QRToken,
   Location,
   DashboardSummary,
   AttendanceStatus,
   AttendanceWithUser,
-  ActivityLogWithUser,
 } from "./types";
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -262,115 +260,6 @@ export const mockAttendance: Attendance[] = attendanceUserIds.flatMap((uid) =>
   generateAttendanceForUser(uid, 0)
 );
 
-// ── Activity Categories ────────────────────────────────────────────
-
-export const activityCategories = [
-  { value: "design", label: "Design" },
-  { value: "research", label: "Research" },
-  { value: "admin", label: "Admin" },
-  { value: "content", label: "Content" },
-  { value: "development", label: "Development" },
-  { value: "other", label: "Other" },
-] as const;
-
-// ── Activity Logs ──────────────────────────────────────────────────
-
-const taskTitles: Record<string, string[]> = {
-  design: [
-    "Landing page redesign",
-    "Icon set update",
-    "Brand guide revision",
-    "UI mockup for client X",
-    "Social media banner",
-  ],
-  research: [
-    "Competitor analysis",
-    "User interview notes",
-    "Market trend report",
-    "UX benchmark study",
-    "Tool evaluation",
-  ],
-  admin: [
-    "Weekly team meeting",
-    "Invoice preparation",
-    "Client follow-up",
-    "Project timeline update",
-    "Equipment inventory",
-  ],
-  content: [
-    "Blog post draft",
-    "Portfolio copy update",
-    "Case study write-up",
-    "Newsletter content",
-    "Social media caption",
-  ],
-  development: [
-    "API endpoint refactor",
-    "Bug fix: auth flow",
-    "Database migration",
-    "Frontend component library",
-    "CI/CD pipeline setup",
-  ],
-  other: [
-    "Studio cleanup",
-    "Team lunch coordination",
-    "Workshop preparation",
-    "Documentation update",
-    "Onboarding new member",
-  ],
-};
-
-function generateActivitiesForUser(
-  userId: string,
-  daysBack: number
-): ActivityLog[] {
-  const logs: ActivityLog[] = [];
-  const categories = Object.keys(taskTitles);
-
-  for (let i = 0; i < daysBack; i++) {
-    const date = daysAgo(i);
-    const dow = new Date(date).getDay();
-    if (dow === 0 || dow === 6) continue;
-
-    const numTasks = 2 + (Math.abs(hashCode(userId + date)) % 3);
-    for (let t = 0; t < numTasks; t++) {
-      const catIdx =
-        Math.abs(hashCode(userId + date + t.toString())) % categories.length;
-      const cat = categories[catIdx];
-      const titles = taskTitles[cat];
-      const titleIdx =
-        Math.abs(hashCode(date + userId + t.toString())) % titles.length;
-
-      const createdAt = new Date(date);
-      createdAt.setHours(8 + t, 0, 0, 0);
-
-      logs.push({
-        id: `act-${userId}-${date}-${t}`,
-        userId,
-        date,
-        taskTitle: titles[titleIdx],
-        category: cat as ActivityLog["category"],
-        description:
-          t % 3 === 0
-            ? "Working on this task for the team deliverable."
-            : undefined,
-        status: i === 0 && t === 0 ? "in_progress" : "done",
-        estimatedHours: 1 + (Math.abs(hashCode(userId + t.toString())) % 4),
-        createdAt: createdAt.toISOString(),
-        updatedAt: createdAt.toISOString(),
-      });
-    }
-  }
-  return logs;
-}
-
-const activityUserIds = [
-  "u-002", "u-003", "u-004", "u-005", "u-006", "u-007", "u-008",
-];
-export const mockActivities: ActivityLog[] = activityUserIds.flatMap((uid) =>
-  generateActivitiesForUser(uid, 7)
-);
-
 // ── Query Functions ────────────────────────────────────────────────
 
 export function getUserById(userId: string): User | undefined {
@@ -395,24 +284,6 @@ export function getAttendanceStatus(userId: string): AttendanceStatus {
 export function getTodayAttendance(): AttendanceWithUser[] {
   const todayDate = today();
   return mockAttendance
-    .filter((a) => a.date === todayDate)
-    .map((a) => ({ ...a, user: getUserById(a.userId)! }))
-    .filter((a) => a.user);
-}
-
-export function getUserActivities(
-  userId: string,
-  date?: string
-): ActivityLog[] {
-  const targetDate = date || today();
-  return mockActivities.filter(
-    (a) => a.userId === userId && a.date === targetDate
-  );
-}
-
-export function getAllTodayActivities(): ActivityLogWithUser[] {
-  const todayDate = today();
-  return mockActivities
     .filter((a) => a.date === todayDate)
     .map((a) => ({ ...a, user: getUserById(a.userId)! }))
     .filter((a) => a.user);

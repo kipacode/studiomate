@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 
 const navLinks = [
   { label: "My Dashboard", href: "/me" },
-  { label: "Activity Log", href: "/me/activity" },
   { label: "History", href: "/me/history" },
 ];
 
