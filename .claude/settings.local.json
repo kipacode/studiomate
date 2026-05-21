@@ -22,7 +22,11 @@
       "Bash(curl -s http://localhost:3000/api/auth/me)",
       "Bash(curl -s http://localhost:3000/api/auth/me -v)",
       "Bash(curl -s http://localhost:3001/api/auth/me)",
-      "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"admin\"}')"
+      "Bash(curl -s -X POST http://localhost:3001/api/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"admin\"}')",
+      "Bash(git remote *)",
+      "Bash(git branch *)",
+      "Bash(git push *)",
+      "Bash(npx tsx *)"
     ]
   }
 }
