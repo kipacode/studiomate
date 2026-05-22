@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { cn, getInitials, getRoleLabel } from "@/lib/utils";
-import { LogOut, User as UserIcon } from "lucide-react";
+import { cn, getRoleLabel } from "@/lib/utils";
+import { LogOut, User as UserIcon, Home, Users, History } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,13 +12,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { MoodAvatar } from "@/components/ui/mood-avatar";
 
 const navLinks = [
-  { label: "My Dashboard", href: "/me" },
-  { label: "History", href: "/me/history" },
+  { label: "My Dashboard", shortLabel: "Home", href: "/me", icon: Home },
+  { label: "Team", shortLabel: "Team", href: "/me/team", icon: Users },
+  { label: "History", shortLabel: "History", href: "/me/history", icon: History },
 ];
+
+function isLinkActive(pathname: string, href: string) {
+  return href === "/me" ? pathname === "/me" : pathname.startsWith(href);
+}
 
 export function MemberTopNav() {
   const pathname = usePathname();
@@ -41,13 +45,10 @@ export function MemberTopNav() {
           </span>
         </Link>
 
-        {/* Nav Links */}
+        {/* Nav Links (desktop) */}
         <nav className="hidden md:flex items-center gap-1">
           {navLinks.map((link) => {
-            const isActive =
-              link.href === "/me"
-                ? pathname === "/me"
-                : pathname.startsWith(link.href);
+            const isActive = isLinkActive(pathname, link.href);
             return (
               <Link
                 key={link.href}
@@ -70,11 +71,11 @@ export function MemberTopNav() {
           <DropdownMenu>
             <DropdownMenuTrigger>
               <div className="flex h-8 items-center gap-2 px-2 rounded-md hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors">
-                <Avatar className="h-6 w-6">
-                  <AvatarFallback className="text-[10px] bg-muted">
-                    {getInitials(user.name)}
-                  </AvatarFallback>
-                </Avatar>
+                <MoodAvatar
+                  mood={user.mood}
+                  name={user.name}
+                  className="size-6 text-[10px] ring-1"
+                />
                 <span className="text-sm hidden sm:inline">{user.name}</span>
               </div>
             </DropdownMenuTrigger>
@@ -102,5 +103,38 @@ export function MemberTopNav() {
         )}
       </div>
     </header>
+  );
+}
+
+export function MemberBottomNav() {
+  const pathname = usePathname();
+
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-50 h-16 glass border-t border-border/50 md:hidden">
+      <div className="flex h-full items-stretch justify-around px-2">
+        {navLinks.map((link) => {
+          const isActive = isLinkActive(pathname, link.href);
+          const Icon = link.icon;
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={cn(
+                "relative flex flex-1 flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors",
+                isActive
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {isActive && (
+                <span className="absolute top-0 h-0.5 w-8 rounded-full bg-foreground" />
+              )}
+              <Icon className="size-5" />
+              {link.shortLabel}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }

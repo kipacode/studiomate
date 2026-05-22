@@ -3,7 +3,8 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { MemberTopNav } from "@/components/layout/member-topnav";
+import { MemberTopNav, MemberBottomNav } from "@/components/layout/member-topnav";
+import { MoodOnboarding } from "@/components/mood-onboarding";
 
 export default function MemberLayout({
   children,
@@ -24,9 +25,11 @@ export default function MemberLayout({
   return (
     <>
       <MemberTopNav />
+      <MoodOnboarding />
       <main className="pt-14 min-h-screen">
-        <div className="max-w-6xl mx-auto p-6">{children}</div>
+        <div className="max-w-6xl mx-auto p-6 pb-24 md:pb-6">{children}</div>
       </main>
+      <MemberBottomNav />
     </>
   );
 }

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Users, UserX, Clock, Activity } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { Users, UserX, Clock, Activity, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { MoodAvatar } from "@/components/ui/mood-avatar";
 import {
   Table,
   TableBody,
@@ -26,7 +26,6 @@ import {
   getStatusLabel,
   getRoleColor,
   getRoleLabel,
-  getInitials,
 } from "@/lib/utils";
 import type { User } from "@/lib/types";
 
@@ -39,11 +38,13 @@ interface AttendanceRecord {
   checkInTime: string | null;
   checkOutTime: string | null;
   isLate: boolean;
+  status?: string;
   user: User;
 }
 
 interface DashboardSummary {
   totalPresent: number;
+  totalLeave: number;
   totalAbsent: number;
   totalLate: number;
   recentCheckIns: number;
@@ -56,9 +57,10 @@ interface WeeklyData {
   late: number;
 }
 
-type AttendanceStatus = "checked_in" | "late" | "checked_out" | "not_yet";
+type AttendanceStatus = "checked_in" | "late" | "checked_out" | "not_yet" | "leave";
 
 function getStatus(record: AttendanceRecord | undefined): AttendanceStatus {
+  if (record?.status === "leave") return "leave";
   if (!record || !record.checkInTime) return "not_yet";
   if (record.checkOutTime) return "checked_out";
   if (record.isLate) return "late";
@@ -77,6 +79,7 @@ const chartConfig = {
 export default function AdminDashboard() {
   const [summary, setSummary] = useState<DashboardSummary>({
     totalPresent: 0,
+    totalLeave: 0,
     totalAbsent: 0,
     totalLate: 0,
     recentCheckIns: 0,
@@ -87,36 +90,46 @@ export default function AdminDashboard() {
   const [allMembers, setAllMembers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [dashRes, usersRes] = await Promise.all([
-          fetch("/api/dashboard"),
-          fetch("/api/users"),
-        ]);
+  const load = useCallback(async () => {
+    try {
+      const [dashRes, usersRes] = await Promise.all([
+        fetch("/api/dashboard"),
+        fetch("/api/users"),
+      ]);
 
-        if (dashRes.ok) {
-          const data = await dashRes.json();
-          setSummary(data.summary);
-          setTodayAttendance(data.todayAttendance ?? []);
-          setWeeklyData(data.weeklyData ?? []);
-        }
-
-        if (usersRes.ok) {
-          const data = await usersRes.json();
-          const members = (data.users as User[]).filter(
-            (u) => u.role !== "admin" && u.role !== "freelancer" && u.status === "active"
-          );
-          setAllMembers(members);
-        }
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
+      if (dashRes.ok) {
+        const data = await dashRes.json();
+        setSummary(data.summary);
+        setTodayAttendance(data.todayAttendance ?? []);
+        setWeeklyData(data.weeklyData ?? []);
       }
+
+      if (usersRes.ok) {
+        const data = await usersRes.json();
+        const members = (data.users as User[]).filter(
+          (u) => u.role !== "admin" && u.role !== "freelancer" && u.status === "active"
+        );
+        setAllMembers(members);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Re-fetch when tab comes back into focus so mood avatars stay current
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden) load();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [load]);
 
   // Build member rows — all active members, matched with today's attendance
   const memberRows = allMembers.map((member) => {
@@ -130,7 +143,8 @@ export default function AdminDashboard() {
     checked_in: 0,
     late: 1,
     checked_out: 2,
-    not_yet: 3,
+    leave: 3,
+    not_yet: 4,
   };
   memberRows.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 
@@ -141,6 +155,13 @@ export default function AdminDashboard() {
       icon: Users,
       color: "bg-emerald-500/15 text-emerald-400",
       iconBg: "bg-emerald-500/10",
+    },
+    {
+      label: "On Leave",
+      value: summary.totalLeave,
+      icon: CalendarDays,
+      color: "bg-indigo-500/15 text-indigo-400",
+      iconBg: "bg-indigo-500/10",
     },
     {
       label: "Not Yet",
@@ -168,7 +189,7 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 stagger-children">
         {summaryCards.map((card) => (
           <Card key={card.label} className="border-border/50">
             <CardContent className="p-5">
@@ -234,11 +255,11 @@ export default function AdminDashboard() {
                     <TableRow key={member.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <Avatar className="h-7 w-7">
-                            <AvatarFallback className="text-[10px] bg-muted">
-                              {getInitials(member.name)}
-                            </AvatarFallback>
-                          </Avatar>
+                          <MoodAvatar
+                            mood={member.mood}
+                            name={member.name}
+                            className="size-7"
+                          />
                           <span className="text-sm font-medium">
                             {member.name}
                           </span>

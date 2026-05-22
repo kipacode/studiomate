@@ -28,8 +28,8 @@ export async function GET() {
         const records = await prisma.attendance.findMany({ where: { date: dateStr } });
         days.push({
           day: dayNames[d.getDay()],
-          present: records.length,
-          late: records.filter((r: { isLate: boolean }) => r.isLate).length,
+          present: records.filter((r: { status: string }) => r.status !== "leave").length,
+          late: records.filter((r: { isLate: boolean, status: string }) => r.status !== "leave" && r.isLate).length,
         });
       }
       return days;
@@ -37,11 +37,12 @@ export async function GET() {
   ]);
 
   const summary = {
-    totalPresent: todayAttendance.length,
+    totalPresent: todayAttendance.filter((a) => a.status !== "leave").length,
+    totalLeave: todayAttendance.filter((a) => a.status === "leave").length,
     totalAbsent: totalMembers - todayAttendance.length,
-    totalLate: todayAttendance.filter((a) => a.isLate).length,
+    totalLate: todayAttendance.filter((a) => a.status !== "leave" && a.isLate).length,
     recentCheckIns: todayAttendance.filter(
-      (a: { checkInTime: Date | null }) => a.checkInTime && new Date(a.checkInTime) >= oneHourAgo
+      (a: { checkInTime: Date | null, status: string }) => a.status !== "leave" && a.checkInTime && new Date(a.checkInTime) >= oneHourAgo
     ).length,
     totalMembers,
   };

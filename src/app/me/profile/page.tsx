@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useUsers } from "@/lib/users-context";
+import type { Mood } from "@/lib/types";
+import { MoodAvatar } from "@/components/ui/mood-avatar";
+import { MoodPicker } from "@/components/mood-picker";
 import {
   cn,
-  getInitials,
   getRoleColor,
   getRoleLabel,
   getInternProgress,
@@ -38,6 +40,7 @@ import {
   Lock,
   Save,
   Cake,
+  Smile,
 } from "lucide-react";
 
 export default function ProfilePage() {
@@ -64,12 +67,31 @@ export default function ProfilePage() {
 
   const [isSaving, setIsSaving] = useState(false);
 
+  // Mood
+  const [mood, setMood] = useState<Mood | undefined>(user?.mood);
+
   if (!user) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <p className="text-muted-foreground">Please log in to continue.</p>
       </div>
     );
+  }
+
+  async function handleMoodSelect(next: Mood) {
+    if (!user) return;
+    const prev = mood;
+    setMood(next);
+    try {
+      await updateUser(user.id, { mood: next });
+      updateCurrentUser({ mood: next });
+      toast.success("Mood updated", {
+        description: "Your avatar now reflects your mood.",
+      });
+    } catch {
+      setMood(prev);
+      toast.error("Couldn't update your mood. Please try again.");
+    }
   }
 
   const isIntern = user.role === "intern";
@@ -116,11 +138,7 @@ export default function ProfilePage() {
       {/* Avatar & Info */}
       <Card className="border-0 bg-neutral-900/50 ring-1 ring-white/[0.04]">
         <CardContent className="flex items-center gap-5 py-6">
-          <div className="flex size-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-neutral-700 to-neutral-800 ring-2 ring-white/[0.06]">
-            <span className="text-2xl font-semibold text-neutral-200">
-              {getInitials(user.name)}
-            </span>
-          </div>
+          <MoodAvatar mood={mood} name={user.name} className="size-20 text-3xl" />
           <div>
             <h2 className="text-lg font-semibold text-white">{user.name}</h2>
             <p className="text-sm text-neutral-400">{user.email}</p>
@@ -150,6 +168,22 @@ export default function ProfilePage() {
               </Badge>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Mood */}
+      <Card className="border-0 bg-neutral-900/50 ring-1 ring-white/[0.04]">
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Smile className="size-4 text-neutral-400" />
+            Mood
+          </CardTitle>
+          <CardDescription>
+            Your avatar reflects the mood you pick here
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <MoodPicker value={mood} onSelect={handleMoodSelect} name={user.name} />
         </CardContent>
       </Card>
 

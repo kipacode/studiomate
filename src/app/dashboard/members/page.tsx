@@ -18,14 +18,14 @@ import {
   getStatusLabel,
   getRoleColor,
   getRoleLabel,
-  getInitials,
   getInternProgress,
   getInternDaysRemaining,
   todayStr,
 } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { MoodAvatar } from '@/components/ui/mood-avatar';
+import { getMood } from '@/lib/moods';
 import {
   Table,
   TableBody,
@@ -118,10 +118,7 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
 
         {/* Profile Section */}
         <div className="flex items-center gap-4">
-          <Avatar size="lg">
-            {user.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
-            <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-          </Avatar>
+          <MoodAvatar mood={user.mood} name={user.name} className="size-14" />
           <div className="space-y-1">
             <h3 className="text-base font-semibold">{user.name}</h3>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -134,7 +131,7 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
                 {formatDate(user.birthDate)}
               </div>
             )}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="outline" className={cn('text-[10px]', getRoleColor(user.role))}>
                 {getRoleLabel(user.role)}
               </Badge>
@@ -149,6 +146,17 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
               >
                 {user.status === 'active' ? 'Active' : 'Inactive'}
               </Badge>
+              {user.mood && (() => {
+                const def = getMood(user.mood);
+                return def ? (
+                  <Badge
+                    variant="outline"
+                    className={cn('text-[10px] border-white/10 bg-white/[0.04]', def.text)}
+                  >
+                    {def.label}
+                  </Badge>
+                ) : null;
+              })()}
             </div>
           </div>
         </div>
@@ -234,10 +242,7 @@ function MemberRow({
     <TableRow className="border-white/[0.04] transition-colors hover:bg-white/[0.03]">
       <TableCell>
         <div className="flex items-center gap-3">
-          <Avatar size="sm">
-            {user.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
-            <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
-          </Avatar>
+          <MoodAvatar mood={user.mood} name={user.name} className="size-7" />
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">{user.name}</p>
             <p className="text-xs text-muted-foreground truncate">{user.email}</p>

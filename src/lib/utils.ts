@@ -54,6 +54,8 @@ export function getStatusColor(status: AttendanceStatus): string {
       return "bg-neutral-500/15 text-neutral-400 border-neutral-500/20";
     case "late":
       return "bg-amber-500/15 text-amber-400 border-amber-500/20";
+    case "leave":
+      return "bg-indigo-500/15 text-indigo-400 border-indigo-500/20";
   }
 }
 
@@ -67,6 +69,8 @@ export function getStatusLabel(status: AttendanceStatus): string {
       return "Not Yet";
     case "late":
       return "Late";
+    case "leave":
+      return "On Leave";
   }
 }
 

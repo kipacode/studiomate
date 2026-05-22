@@ -36,6 +36,15 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
     refreshUsers();
   }, [refreshUsers]);
 
+  // Re-fetch when the tab comes back into focus so mood changes propagate live
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden) refreshUsers();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [refreshUsers]);
+
   async function updateUser(id: string, changes: Partial<User>) {
     const res = await fetch(`/api/users/${id}`, {
       method: "PUT",

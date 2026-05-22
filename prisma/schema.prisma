@@ -29,6 +29,7 @@ model User {
   status          UserStatus   @default(active)
   birthDate       String?
   avatar          String?
+  mood            String?
   internshipStart String?
   internshipEnd   String?
   homeLat         Float?
@@ -60,6 +61,7 @@ model Attendance {
   isLate       Boolean   @default(false)
   flagged      Boolean   @default(false)
   flagNote     String?
+  status       String    @default("check-in")
 
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 

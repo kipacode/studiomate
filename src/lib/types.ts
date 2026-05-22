@@ -1,7 +1,20 @@
 // ── Role & Category Types ──────────────────────────────────────────
 
 export type UserRole = "admin" | "employee" | "intern" | "freelancer";
-export type AttendanceStatus = "checked_in" | "checked_out" | "not_yet" | "late";
+export type AttendanceStatus = "checked_in" | "checked_out" | "not_yet" | "late" | "leave";
+export type Mood =
+  | "happy"
+  | "calm"
+  | "focused"
+  | "energetic"
+  | "tired"
+  | "stressed"
+  | "excited"
+  | "sad"
+  | "angry"
+  | "cool"
+  | "caffeinated"
+  | "neutral";
 
 // ── Data Models ────────────────────────────────────────────────────
 
@@ -15,6 +28,7 @@ export interface User {
   status: "active" | "inactive";
   birthDate?: string;
   avatar?: string;
+  mood?: Mood;
   internshipStart?: string;
   internshipEnd?: string;
   homeLat?: number;
@@ -44,6 +58,7 @@ export interface Attendance {
   isLate: boolean;
   flagged: boolean;
   flagNote?: string;
+  status?: string;
 }
 
 export interface QRToken {

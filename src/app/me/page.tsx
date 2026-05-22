@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
-import { getAttendanceHistory } from "@/lib/mock-data";
+import QRCode from "qrcode";
 import {
   cn,
   formatTime,
@@ -22,6 +22,8 @@ import {
   CalendarDays,
   Timer,
   GraduationCap,
+  QrCode,
+  Upload,
 } from "lucide-react";
 
 export default function MemberDashboardPage() {
@@ -32,8 +34,11 @@ export default function MemberDashboardPage() {
     checkInTime: string | null;
     checkOutTime: string | null;
     isLate: boolean;
+    status?: string;
   } | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -52,6 +57,41 @@ export default function MemberDashboardPage() {
       .catch(() => {});
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    fetch(`/api/attendance`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.attendance) setAttendanceHistory(d.attendance);
+      })
+      .catch(() => {});
+  }, [user, todayAttendance]);
+
+  useEffect(() => {
+    if (user?.username) {
+      QRCode.toDataURL(user.username, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: "#000000",
+          light: "#ffffff",
+        }
+      })
+      .then(url => setQrCodeUrl(url))
+      .catch(err => console.error(err));
+    }
+  }, [user]);
+
+  const downloadQRCode = () => {
+    if (!qrCodeUrl) return;
+    const link = document.createElement("a");
+    link.href = qrCodeUrl;
+    link.download = `${user?.username}-qrcode.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   async function handleCheckOut() {
     setCheckingOut(true);
     try {
@@ -66,45 +106,44 @@ export default function MemberDashboardPage() {
 
   const weekAttendance = useMemo(() => {
     if (!user) return [];
-    const history = getAttendanceHistory(user.id);
     const now = new Date();
     const dayOfWeek = now.getDay();
     const monday = new Date(now);
     monday.setDate(now.getDate() - ((dayOfWeek === 0 ? 7 : dayOfWeek) - 1));
     monday.setHours(0, 0, 0, 0);
 
-    const days: { label: string; status: "present" | "late" | "absent" | "future" }[] = [];
+    const days: { label: string; status: "present" | "late" | "absent" | "future" | "leave" }[] = [];
     for (let i = 0; i < 5; i++) {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
       const dateStr = d.toISOString().slice(0, 10);
       const labels = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-      const record = history.find((r) => r.date === dateStr);
+      const record = attendanceHistory.find((r) => r.date === dateStr);
 
-      let status: "present" | "late" | "absent" | "future" = "absent";
+      let status: "present" | "late" | "absent" | "future" | "leave" = "absent";
       if (d > now) {
         status = "future";
       } else if (record) {
-        status = record.isLate ? "late" : "present";
+        status = record.status === "leave" ? "leave" : (record.isLate ? "late" : "present");
       }
 
       days.push({ label: labels[i], status });
     }
     return days;
-  }, [user]);
+  }, [user, attendanceHistory]);
 
   const monthStats = useMemo(() => {
-    if (!user) return { present: 0, late: 0 };
-    const history = getAttendanceHistory(user.id);
+    if (!user) return { present: 0, late: 0, leave: 0 };
     const now = new Date();
     const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const monthRecords = history.filter((r) => r.date.startsWith(monthStr));
+    const monthRecords = attendanceHistory.filter((r) => r.date.startsWith(monthStr));
 
     return {
-      present: monthRecords.filter((r) => r.checkInTime && !r.isLate).length,
-      late: monthRecords.filter((r) => r.isLate).length,
+      present: monthRecords.filter((r) => r.status !== "leave" && r.checkInTime && !r.isLate).length,
+      late: monthRecords.filter((r) => r.status !== "leave" && r.isLate).length,
+      leave: monthRecords.filter((r) => r.status === "leave").length,
     };
-  }, [user]);
+  }, [user, attendanceHistory]);
 
   function getDurationSinceCheckIn(): string {
     if (!todayAttendance?.checkInTime) return "";
@@ -140,19 +179,21 @@ export default function MemberDashboardPage() {
                 <span
                   className={cn(
                     "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
-                    isCheckedIn && !isLate && "bg-emerald-400",
-                    isCheckedIn && isLate && "bg-amber-400",
-                    isCheckedOut && "bg-sky-400",
-                    !isCheckedIn && !isCheckedOut && "bg-neutral-400",
+                    todayAttendance?.status === "leave" && "bg-indigo-400",
+                    todayAttendance?.status !== "leave" && isCheckedIn && !isLate && "bg-emerald-400",
+                    todayAttendance?.status !== "leave" && isCheckedIn && isLate && "bg-amber-400",
+                    todayAttendance?.status !== "leave" && isCheckedOut && "bg-sky-400",
+                    todayAttendance?.status !== "leave" && !isCheckedIn && !isCheckedOut && "bg-neutral-400",
                   )}
                 />
                 <span
                   className={cn(
                     "relative inline-flex h-3 w-3 rounded-full",
-                    isCheckedIn && !isLate && "bg-emerald-500",
-                    isCheckedIn && isLate && "bg-amber-500",
-                    isCheckedOut && "bg-sky-500",
-                    !isCheckedIn && !isCheckedOut && "bg-neutral-500",
+                    todayAttendance?.status === "leave" && "bg-indigo-500",
+                    todayAttendance?.status !== "leave" && isCheckedIn && !isLate && "bg-emerald-500",
+                    todayAttendance?.status !== "leave" && isCheckedIn && isLate && "bg-amber-500",
+                    todayAttendance?.status !== "leave" && isCheckedOut && "bg-sky-500",
+                    todayAttendance?.status !== "leave" && !isCheckedIn && !isCheckedOut && "bg-neutral-500",
                   )}
                 />
               </span>
@@ -160,12 +201,17 @@ export default function MemberDashboardPage() {
 
             <div>
               <h2 className="text-xl font-semibold text-white tracking-tight">
-                {isCheckedOut && "Checked Out"}
-                {isCheckedIn && !isLate && "You're Checked In"}
-                {isCheckedIn && isLate && "Checked In (Late)"}
-                {!isCheckedIn && !isCheckedOut && "Not Checked In Yet"}
+                {todayAttendance?.status === "leave" && "You are On Leave Today"}
+                {todayAttendance?.status !== "leave" && isCheckedOut && "Checked Out"}
+                {todayAttendance?.status !== "leave" && isCheckedIn && !isLate && "You're Checked In"}
+                {todayAttendance?.status !== "leave" && isCheckedIn && isLate && "Checked In (Late)"}
+                {todayAttendance?.status !== "leave" && !isCheckedIn && !isCheckedOut && "Not Checked In Yet"}
               </h2>
-              {todayAttendance?.checkInTime ? (
+              {todayAttendance?.status === "leave" ? (
+                <p className="mt-1 text-sm text-neutral-400">
+                  Your leave status has been registered for today.
+                </p>
+              ) : todayAttendance?.checkInTime ? (
                 <div className="mt-1 space-y-0.5">
                   <p className="text-sm text-neutral-400">
                     Check-in time:{" "}
@@ -212,7 +258,11 @@ export default function MemberDashboardPage() {
                 })}
               </p>
             </div>
-            {isCheckedOut ? (
+            {todayAttendance?.status === "leave" ? (
+              <Button variant="outline" size="lg" className="gap-2 border-indigo-500/20 text-indigo-400" disabled>
+                On Leave
+              </Button>
+            ) : isCheckedOut ? (
               <Button variant="ghost" size="lg" className="gap-2" disabled>
                 <LogOut className="size-4" />
                 Checked Out
@@ -298,6 +348,8 @@ export default function MemberDashboardPage() {
                         "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30",
                       day.status === "absent" &&
                         "bg-neutral-800/50 text-neutral-500 ring-1 ring-neutral-700/50",
+                      day.status === "leave" &&
+                        "bg-indigo-500/15 text-indigo-400 ring-1 ring-indigo-500/30",
                       day.status === "future" &&
                         "bg-neutral-800/30 text-neutral-600 ring-1 ring-neutral-700/30"
                     )}
@@ -305,6 +357,7 @@ export default function MemberDashboardPage() {
                     {day.status === "present" && "✓"}
                     {day.status === "late" && "!"}
                     {day.status === "absent" && "✕"}
+                    {day.status === "leave" && "L"}
                     {day.status === "future" && "·"}
                   </div>
                 </div>
@@ -320,6 +373,9 @@ export default function MemberDashboardPage() {
               <span className="flex items-center gap-1">
                 <span className="size-2 rounded-full bg-neutral-600" /> Absent
               </span>
+              <span className="flex items-center gap-1">
+                <span className="size-2 rounded-full bg-indigo-500" /> Leave
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -333,7 +389,7 @@ export default function MemberDashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div className="rounded-lg bg-emerald-500/[0.06] p-3 text-center ring-1 ring-emerald-500/10">
                 <p className="text-lg font-semibold text-emerald-400 tabular-nums">
                   {monthStats.present}
@@ -350,7 +406,63 @@ export default function MemberDashboardPage() {
                   Late
                 </p>
               </div>
+              <div className="rounded-lg bg-indigo-500/[0.06] p-3 text-center ring-1 ring-indigo-500/10">
+                <p className="text-lg font-semibold text-indigo-400 tabular-nums">
+                  {monthStats.leave}
+                </p>
+                <p className="text-[10px] text-neutral-500 uppercase tracking-wider mt-0.5">
+                  Leave
+                </p>
+              </div>
             </div>
+          </CardContent>
+        </Card>
+        {/* Personal QR ID Card */}
+        <Card className="relative overflow-hidden border border-white/[0.06] bg-neutral-950/40 backdrop-blur-xl">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <QrCode className="size-4 text-emerald-400" />
+                <CardTitle className="text-sm">Digital ID Card</CardTitle>
+              </div>
+              <span className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
+                StudioMate Identity
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center space-y-4 py-6">
+            <div className="relative group flex items-center justify-center bg-white p-3 rounded-xl shadow-lg border border-white/20 transition-all duration-300 hover:scale-105">
+              {qrCodeUrl ? (
+                <img
+                  src={qrCodeUrl}
+                  alt="My QR Code ID"
+                  className="w-40 h-40 object-contain animate-fade-in"
+                />
+              ) : (
+                <div className="w-40 h-40 flex items-center justify-center text-xs text-neutral-500">
+                  Generating QR...
+                </div>
+              )}
+            </div>
+
+            <div className="text-center">
+              <h3 className="text-base font-semibold text-white tracking-tight">{user.name}</h3>
+              <p className="text-xs text-neutral-400 mt-0.5">@{user.username}</p>
+              <p className="text-[10px] text-neutral-500 mt-1 uppercase tracking-wider font-mono">
+                ID: {user.id}
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={downloadQRCode}
+              className="gap-1.5 hover:bg-neutral-800 transition-colors"
+            >
+              <Upload className="h-3.5 w-3.5 rotate-180" />
+              Download QR Code File
+            </Button>
           </CardContent>
         </Card>
       </div>
