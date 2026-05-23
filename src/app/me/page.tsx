@@ -24,7 +24,9 @@ import {
   GraduationCap,
   QrCode,
   Upload,
+  CalendarPlus,
 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function MemberDashboardPage() {
   const { user } = useAuth();
@@ -39,6 +41,9 @@ export default function MemberDashboardPage() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
+  const [selectedStatus, setSelectedStatus] = useState<"check-in" | "leave">("check-in");
+  const [registeringLeave, setRegisteringLeave] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -92,6 +97,27 @@ export default function MemberDashboardPage() {
     document.body.removeChild(link);
   };
 
+  async function handleCheckIn() {
+    setCheckingIn(true);
+    try {
+      const res = await fetch("/api/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ qrToken: "DASHBOARD", status: "check-in" }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        setTodayAttendance(d.attendance);
+        toast.success("Successfully checked in for today");
+      } else {
+        toast.error(d.error || "Failed to check in");
+      }
+    } catch {
+      toast.error("Failed to check in. Please try again.");
+    }
+    setCheckingIn(false);
+  }
+
   async function handleCheckOut() {
     setCheckingOut(true);
     try {
@@ -102,6 +128,27 @@ export default function MemberDashboardPage() {
       }
     } catch {}
     setCheckingOut(false);
+  }
+
+  async function handleRegisterLeave() {
+    setRegisteringLeave(true);
+    try {
+      const res = await fetch("/api/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "leave" }),
+      });
+      const d = await res.json();
+      if (res.ok) {
+        setTodayAttendance(d.attendance);
+        toast.success("Successfully registered as On Leave for today");
+      } else {
+        toast.error(d.error || "Failed to register leave");
+      }
+    } catch {
+      toast.error("Failed to register leave. Please try again.");
+    }
+    setRegisteringLeave(false);
   }
 
   const weekAttendance = useMemo(() => {
@@ -279,12 +326,57 @@ export default function MemberDashboardPage() {
                 {checkingOut ? "Processing..." : "Check Out"}
               </Button>
             ) : (
-              <Button size="lg" className="gap-2">
-                <Link href="/check-in" className="flex items-center gap-2">
-                  <LogIn className="size-4" />
-                  Check In
-                </Link>
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="grid grid-cols-2 gap-1 bg-neutral-900/60 p-1 rounded-lg border border-white/[0.04] w-40">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus("check-in")}
+                    className={cn(
+                      "py-1.5 text-xs font-medium rounded-md transition-all duration-200",
+                      selectedStatus === "check-in"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "text-neutral-400 hover:text-neutral-200"
+                    )}
+                  >
+                    Check-in
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStatus("leave")}
+                    className={cn(
+                      "py-1.5 text-xs font-medium rounded-md transition-all duration-200",
+                      selectedStatus === "leave"
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "text-neutral-400 hover:text-neutral-200"
+                    )}
+                  >
+                    On Leave
+                  </button>
+                </div>
+
+                {selectedStatus === "check-in" ? (
+                  <Button
+                    size="lg"
+                    className="gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
+                    onClick={handleCheckIn}
+                    disabled={checkingIn}
+                  >
+                    <LogIn className="size-4" />
+                    {checkingIn ? "Processing..." : "Check In"}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="gap-2 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/10"
+                    onClick={handleRegisterLeave}
+                    disabled={registeringLeave}
+                  >
+                    <CalendarPlus className="size-4" />
+                    {registeringLeave ? "Processing..." : "Register Leave"}
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </CardContent>

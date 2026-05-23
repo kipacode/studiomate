@@ -64,6 +64,10 @@ export async function POST(req: NextRequest) {
           }
         });
       } else {
+        if (status === "check-in" && existing.status === "leave") {
+          return Response.json({ error: "User is on leave today and cannot check in" }, { status: 400 });
+        }
+
         // If record exists, update status. If checking in, set check-in time if empty.
         const now = new Date();
         const cutoff = new Date(now);
