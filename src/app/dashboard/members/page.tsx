@@ -7,9 +7,14 @@ import {
   Mail,
   Calendar,
   Cake,
+  Pencil,
+  ToggleLeft,
+  Plus,
 } from 'lucide-react';
 import { useUsers } from '@/lib/users-context';
-import type { User } from '@/lib/types';
+import { useAuth } from '@/lib/auth-context';
+import type { User, UserRole } from '@/lib/types';
+import { toast } from 'sonner';
 import {
   cn,
   formatTime,
@@ -35,6 +40,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -43,6 +56,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
@@ -232,11 +246,17 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
 function MemberRow({
   user,
   status,
+  isAdmin,
   onView,
+  onEdit,
+  onToggleStatus,
 }: {
   user: User;
   status: AttendanceStatus;
+  isAdmin: boolean;
   onView: (u: User) => void;
+  onEdit: (u: User) => void;
+  onToggleStatus: (uId: string) => void;
 }) {
   return (
     <TableRow className="border-white/[0.04] transition-colors hover:bg-white/[0.03]">
@@ -273,15 +293,37 @@ function MemberRow({
         </Badge>
       </TableCell>
       <TableCell>
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={() => onView(user)}
-          className="gap-1 text-muted-foreground hover:text-foreground"
-        >
-          <Eye className="h-3.5 w-3.5" />
-          View
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => onView(user)}
+            className="gap-1 text-muted-foreground hover:text-foreground"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">View</span>
+          </Button>
+          {isAdmin && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onEdit(user)}
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onToggleStatus(user.id)}
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              >
+                <ToggleLeft className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -292,12 +334,30 @@ function MemberRow({
 type RoleFilter = 'all' | 'employee' | 'intern' | 'freelancer';
 
 export default function MembersPage() {
-  const { users } = useUsers();
+  const { users, updateUser, createUser, toggleStatus } = useUsers();
+  const { isAdmin } = useAuth();
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  
+  // View Profile Dialog
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>([]);
+
+  // Create/Edit Dialog
+  const [manageDialogOpen, setManageDialogOpen] = useState(false);
+  const [editUser, setEditUser] = useState<User | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    username: "",
+    email: "",
+    password: "",
+    birthDate: "",
+    role: "intern" as UserRole,
+    status: "active" as "active" | "inactive",
+    internshipStart: "",
+    internshipEnd: "",
+  });
 
   useEffect(() => {
     fetch(`/api/attendance?date=${todayStr()}`)
@@ -324,14 +384,107 @@ export default function MembersPage() {
     setDialogOpen(true);
   };
 
+  // Manage functions
+  function openCreateDialog() {
+    setEditUser(null);
+    setFormData({
+      name: "",
+      username: "",
+      email: "",
+      password: "",
+      birthDate: "",
+      role: "intern",
+      status: "active",
+      internshipStart: "",
+      internshipEnd: "",
+    });
+    setManageDialogOpen(true);
+  }
+
+  function openEditDialog(user: User) {
+    setEditUser(user);
+    setFormData({
+      name: user.name,
+      username: user.username,
+      email: user.email,
+      password: "",
+      birthDate: user.birthDate || "",
+      role: user.role,
+      status: user.status,
+      internshipStart: user.internshipStart || "",
+      internshipEnd: user.internshipEnd || "",
+    });
+    setManageDialogOpen(true);
+  }
+
+  async function handleSave() {
+    if (!formData.name || !formData.username || !formData.email) {
+      toast.error("Name, username and email are required");
+      return;
+    }
+    if (!editUser && !formData.password) {
+      toast.error("Password is required when creating a new user");
+      return;
+    }
+    try {
+      if (editUser) {
+        await updateUser(editUser.id, {
+          name: formData.name,
+          username: formData.username,
+          email: formData.email,
+          birthDate: formData.birthDate || undefined,
+          role: formData.role,
+          status: formData.status,
+          internshipStart: formData.internshipStart || undefined,
+          internshipEnd: formData.internshipEnd || undefined,
+          ...(formData.password ? { password: formData.password } : {}),
+        });
+        toast.success("User updated successfully");
+      } else {
+        await createUser({
+          name: formData.name,
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+          status: formData.status,
+          birthDate: formData.birthDate || undefined,
+          internshipStart: formData.internshipStart || undefined,
+          internshipEnd: formData.internshipEnd || undefined,
+        });
+        toast.success("User created successfully");
+      }
+      setManageDialogOpen(false);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to save user");
+    }
+  }
+
+  async function handleToggleStatus(userId: string) {
+    try {
+      await toggleStatus(userId);
+      toast.success("User status updated");
+    } catch {
+      toast.error("Failed to update status");
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-6">
       {/* ── Header ──────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 animate-fade-in">
-        <h1 className="text-2xl font-bold tracking-tight">Team Members</h1>
-        <Badge variant="secondary" className="text-xs">
-          {allMembers.length} members
-        </Badge>
+      <div className="flex items-center justify-between animate-fade-in">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight">Team Members</h1>
+          <Badge variant="secondary" className="text-xs">
+            {allMembers.length} members
+          </Badge>
+        </div>
+        {isAdmin && (
+          <Button onClick={openCreateDialog} size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Member
+          </Button>
+        )}
       </div>
 
       {/* ── Filters ─────────────────────────────────────────── */}
@@ -383,7 +536,15 @@ export default function MembersPage() {
                   const record = todayAttendance.find((a) => a.userId === user.id);
                   const status = resolveStatus(record);
                   return (
-                    <MemberRow key={user.id} user={user} status={status} onView={handleView} />
+                    <MemberRow 
+                      key={user.id} 
+                      user={user} 
+                      status={status} 
+                      isAdmin={isAdmin}
+                      onView={handleView}
+                      onEdit={openEditDialog}
+                      onToggleStatus={handleToggleStatus}
+                    />
                   );
                 })
               )}
@@ -394,6 +555,157 @@ export default function MembersPage() {
 
       {/* ── Detail Dialog ───────────────────────────────────── */}
       <MemberDialog user={selectedUser} open={dialogOpen} onOpenChange={setDialogOpen} />
+
+      {/* ── Create / Edit User Dialog ──────────────────────── */}
+      <Dialog open={manageDialogOpen} onOpenChange={setManageDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editUser ? "Edit User" : "Create New User"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Full Name</Label>
+              <Input
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData((f) => ({ ...f, name: e.target.value }))
+                }
+                placeholder="Enter full name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Username</Label>
+              <Input
+                value={formData.username}
+                onChange={(e) =>
+                  setFormData((f) => ({ ...f, username: e.target.value }))
+                }
+                placeholder="e.g. rizky"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                Password
+                {editUser && (
+                  <span className="ml-1 text-xs text-muted-foreground font-normal">
+                    (leave blank to keep current)
+                  </span>
+                )}
+              </Label>
+              <Input
+                type="password"
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData((f) => ({ ...f, password: e.target.value }))
+                }
+                placeholder={editUser ? "••••••••" : "Set initial password"}
+                autoComplete="new-password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={formData.email}
+                onChange={(e) =>
+                  setFormData((f) => ({ ...f, email: e.target.value }))
+                }
+                placeholder="email@kipaworks.studio"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Birth Date</Label>
+              <Input
+                type="date"
+                value={formData.birthDate}
+                onChange={(e) =>
+                  setFormData((f) => ({ ...f, birthDate: e.target.value }))
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Role</Label>
+                <Select
+                  value={formData.role}
+                  onValueChange={(v) =>
+                    setFormData((f) => ({ ...f, role: v as UserRole }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="employee">Employee</SelectItem>
+                    <SelectItem value="intern">Intern (PKL)</SelectItem>
+                    <SelectItem value="freelancer">Freelancer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(v) =>
+                    setFormData((f) => ({
+                      ...f,
+                      status: v as "active" | "inactive",
+                    }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {formData.role === "intern" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Internship Start</Label>
+                  <Input
+                    type="date"
+                    value={formData.internshipStart}
+                    onChange={(e) =>
+                      setFormData((f) => ({
+                        ...f,
+                        internshipStart: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Internship End</Label>
+                  <Input
+                    type="date"
+                    value={formData.internshipEnd}
+                    onChange={(e) =>
+                      setFormData((f) => ({
+                        ...f,
+                        internshipEnd: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManageDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave}>
+              {editUser ? "Save Changes" : "Create User"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
