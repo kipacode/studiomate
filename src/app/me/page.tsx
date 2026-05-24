@@ -44,6 +44,7 @@ export default function MemberDashboardPage() {
   const [selectedStatus, setSelectedStatus] = useState<"check-in" | "leave">("check-in");
   const [registeringLeave, setRegisteringLeave] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [showConfirmCheckOut, setShowConfirmCheckOut] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -125,6 +126,7 @@ export default function MemberDashboardPage() {
       if (res.ok) {
         const d = await res.json();
         setTodayAttendance(d.attendance);
+        setShowConfirmCheckOut(false);
       }
     } catch {}
     setCheckingOut(false);
@@ -292,7 +294,7 @@ export default function MemberDashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="text-right hidden md:block">
+            <div className="text-right">
               <p className="text-xs text-neutral-500 uppercase tracking-wider">
                 Current Time
               </p>
@@ -315,16 +317,55 @@ export default function MemberDashboardPage() {
                 Checked Out
               </Button>
             ) : isCheckedIn ? (
-              <Button
-                variant="outline"
-                size="lg"
-                className="gap-2"
-                onClick={handleCheckOut}
-                disabled={checkingOut}
-              >
-                <LogOut className="size-4" />
-                {checkingOut ? "Processing..." : "Check Out"}
-              </Button>
+              /* Desktop: inline confirmation (hidden on mobile) */
+              <>
+                <div className="hidden md:flex">
+                  {showConfirmCheckOut ? (
+                    <div className="flex items-center gap-2 animate-in fade-in duration-300">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-neutral-400 hover:text-neutral-200"
+                        onClick={() => setShowConfirmCheckOut(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="lg"
+                        className="gap-2"
+                        onClick={handleCheckOut}
+                        disabled={checkingOut}
+                      >
+                        <LogOut className="size-4" />
+                        {checkingOut ? "Processing..." : "Confirm Check Out"}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="gap-2 hover:bg-neutral-800 transition-colors"
+                      onClick={() => setShowConfirmCheckOut(true)}
+                    >
+                      <LogOut className="size-4" />
+                      Check Out
+                    </Button>
+                  )}
+                </div>
+                {/* Mobile: always show the trigger button */}
+                <div className="md:hidden">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="gap-2 hover:bg-neutral-800 transition-colors"
+                    onClick={() => setShowConfirmCheckOut(true)}
+                  >
+                    <LogOut className="size-4" />
+                    Check Out
+                  </Button>
+                </div>
+              </>
             ) : (
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div className="grid grid-cols-2 gap-1 bg-neutral-900/60 p-1 rounded-lg border border-white/[0.04] w-40">
@@ -379,6 +420,51 @@ export default function MemberDashboardPage() {
               </div>
             )}
           </div>
+
+          {/* ── Mobile Check-Out Confirmation Overlay ── */}
+          {showConfirmCheckOut && isCheckedIn && (
+            <div className="md:hidden absolute inset-0 z-10 flex items-end animate-in fade-in slide-in-from-bottom-4 duration-300">
+              {/* Backdrop */}
+              <div
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-[inherit]"
+                onClick={() => setShowConfirmCheckOut(false)}
+              />
+              {/* Confirmation panel */}
+              <div className="relative w-full rounded-b-[inherit] border-t border-white/10 bg-neutral-900/95 backdrop-blur-xl p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center size-10 rounded-full bg-red-500/15 ring-1 ring-red-500/30">
+                    <LogOut className="size-5 text-red-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">Confirm Check Out</h3>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      This action cannot be undone for today.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    className="flex-1 text-neutral-400 hover:text-neutral-200 border border-white/[0.06]"
+                    onClick={() => setShowConfirmCheckOut(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="lg"
+                    className="flex-1 gap-2"
+                    onClick={handleCheckOut}
+                    disabled={checkingOut}
+                  >
+                    <LogOut className="size-4" />
+                    {checkingOut ? "Processing..." : "Check Out"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
