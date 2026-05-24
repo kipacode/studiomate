@@ -5,13 +5,21 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { cn, getInitials, getRoleLabel } from "@/lib/utils";
-import { Check, Clock, ArrowLeft, LogIn, LogOut } from "lucide-react";
+import { Check, Clock, ArrowLeft, LogIn, LogOut, MapPin } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { QrScanner } from "@/components/qr-scanner";
 import { toast } from "sonner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Location } from "@/lib/types";
 
 export default function CheckInPage() {
   const { user, isAuthenticated } = useAuth();
@@ -22,6 +30,9 @@ export default function CheckInPage() {
   const [checkedOut, setCheckedOut] = useState(false);
   const [checkInTime, setCheckInTime] = useState<Date | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<string>("");
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -42,26 +53,82 @@ export default function CheckInPage() {
         if (record?.checkOutTime) setCheckedOut(true);
       })
       .catch(() => {});
+      
+    fetch("/api/locations")
+      .then(r => r.json())
+      .then(d => {
+        const activeLocs = d.locations?.filter((l: any) => l.isActive) || [];
+        setLocations(activeLocs);
+        if (activeLocs.length === 1) {
+          setSelectedLocation(activeLocs[0].id);
+        }
+      })
+      .catch(() => {});
   }, [user]);
 
   const isLateNow = currentTime.getHours() >= 8;
 
   function handleCheckIn() {
+    if (!selectedLocation) {
+      toast.error("Please select a location first");
+      return;
+    }
     setStatus("checking");
-    setTimeout(() => {
-      setStatus("success");
-      setCheckedIn(true);
-      setCheckInTime(new Date());
-      setTimeout(() => router.push("/me"), 2000);
+    setTimeout(async () => {
+      try {
+        const res = await fetch("/api/attendance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ qrToken: "DASHBOARD", locationId: selectedLocation }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setStatus("success");
+          setCheckedIn(true);
+          setCheckInTime(new Date());
+          setTimeout(() => router.push("/me"), 2000);
+        } else {
+          setStatus("idle");
+          toast.error(data.error || "Failed to check in");
+        }
+      } catch {
+        setStatus("idle");
+        toast.error("Failed to check in. Please try again.");
+      }
     }, 1000);
   }
 
   function handleCheckOut() {
     setStatus("checking");
-    setTimeout(() => {
-      setCheckedOut(true);
-      setStatus("idle");
+    setTimeout(async () => {
+      try {
+        const res = await fetch("/api/attendance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "check-out" }), // wait, backend handles checkout separately, let me check the checkout api
+          // wait, actually checkout API is /api/attendance/checkout
+        });
+        // Actually I should just hit the proper endpoint
+      } catch {}
     }, 1000);
+  }
+
+  async function handleRealCheckOut() {
+    setStatus("checking");
+    try {
+      const res = await fetch("/api/attendance/checkout", { method: "POST" });
+      if (res.ok) {
+        setCheckedOut(true);
+        setStatus("idle");
+        toast.success("Checked out successfully");
+      } else {
+        setStatus("idle");
+        toast.error("Failed to check out");
+      }
+    } catch {
+      setStatus("idle");
+      toast.error("Failed to check out");
+    }
   }
 
   async function handleScanSuccess(decodedText: string) {
@@ -71,7 +138,7 @@ export default function CheckInPage() {
       const res = await fetch("/api/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qrToken: decodedText }),
+        body: JSON.stringify({ qrToken: decodedText, locationId: selectedLocation }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -233,7 +300,7 @@ export default function CheckInPage() {
                     <Button
                       variant="outline"
                       className="w-full"
-                      onClick={handleCheckOut}
+                      onClick={handleRealCheckOut}
                       disabled={status === "checking"}
                     >
                       <LogOut className="h-4 w-4 mr-2" />
@@ -255,33 +322,63 @@ export default function CheckInPage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <Button
-                      className={cn(
-                        "w-full h-12 text-base",
-                        "bg-emerald-600 hover:bg-emerald-500 text-white"
-                      )}
-                      onClick={() => setIsScanning(true)}
-                      disabled={status === "checking"}
-                    >
-                      {status === "checking" ? (
-                        "Processing..."
-                      ) : (
-                        <>
-                          <LogIn className="h-5 w-5 mr-2" />
-                          Scan QR to Check In
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full text-muted-foreground"
-                      onClick={handleCheckIn}
-                      disabled={status === "checking"}
-                    >
-                      Check in manually (Demo)
-                    </Button>
+                  <div className="space-y-4">
+                    <div className="space-y-2 text-left">
+                      <label className="text-xs text-muted-foreground font-medium flex items-center gap-1.5 ml-1">
+                        <MapPin className="h-3 w-3" /> Select Location
+                      </label>
+                      <Select 
+                        value={selectedLocation} 
+                        onValueChange={(v) => setSelectedLocation(v ?? "")}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select studio location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {locations.map((loc) => (
+                            <SelectItem key={loc.id} value={loc.id}>
+                              {loc.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="space-y-3 pt-2">
+                      <Button
+                        className={cn(
+                          "w-full h-12 text-base",
+                          "bg-emerald-600 hover:bg-emerald-500 text-white",
+                          !selectedLocation && "opacity-50 cursor-not-allowed"
+                        )}
+                        onClick={() => {
+                          if (!selectedLocation) {
+                            toast.error("Please select a location first");
+                            return;
+                          }
+                          setIsScanning(true);
+                        }}
+                        disabled={status === "checking" || !selectedLocation}
+                      >
+                        {status === "checking" ? (
+                          "Processing..."
+                        ) : (
+                          <>
+                            <LogIn className="h-5 w-5 mr-2" />
+                            Scan QR to Check In
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-muted-foreground"
+                        onClick={handleCheckIn}
+                        disabled={status === "checking" || !selectedLocation}
+                      >
+                        Check in manually (Demo)
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

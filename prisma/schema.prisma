@@ -49,6 +49,8 @@ model Location {
   radiusMeters Int
   createdBy    String
   isActive     Boolean @default(true)
+
+  attendances  Attendance[]
 }
 
 model Attendance {
@@ -62,8 +64,10 @@ model Attendance {
   flagged      Boolean   @default(false)
   flagNote     String?
   status       String    @default("check-in")
+  locationId   String?
 
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location     Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
   @@unique([userId, date])
 }

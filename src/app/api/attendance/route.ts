@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
       ...(date ? { date } : {}),
       ...(effectiveUserId ? { userId: effectiveUserId } : {}),
     },
-    include: withUser ? { user: { omit: { password: true } } } : undefined,
+    include: withUser ? { user: { omit: { password: true } }, location: true } : { location: true },
     orderBy: [{ date: "desc" }, { checkInTime: "desc" }],
   });
 
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   if (!session) return Response.json({ error: "Unauthenticated" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const { qrToken, date, status = "check-in" } = body;
+  const { qrToken, date, status = "check-in", locationId } = body;
 
   const today = new Date().toISOString().split("T")[0];
   const attendanceDate = date ?? today;
@@ -96,6 +96,16 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Already checked in for today" }, { status: 409 });
   }
 
+  // Validate locationId if provided
+  if (locationId) {
+    const loc = await prisma.location.findUnique({ where: { id: locationId } });
+    if (!loc) {
+      return Response.json({ error: "Invalid location" }, { status: 400 });
+    }
+  } else if (status === "check-in") {
+    return Response.json({ error: "Location is required to check in" }, { status: 400 });
+  }
+
   const checkInTime = new Date();
   const cutoff = new Date(checkInTime);
   cutoff.setHours(8, 0, 0, 0);
@@ -109,6 +119,7 @@ export async function POST(req: NextRequest) {
       qrTokenUsed: qrToken,
       isLate,
       status: "check-in",
+      locationId,
     },
   });
 
