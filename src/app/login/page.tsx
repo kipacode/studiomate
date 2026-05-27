@@ -111,21 +111,21 @@ export default function LoginPage() {
       {/* Animated gradient background */}
       <div className="absolute inset-0 bg-background">
         <div
-          className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full opacity-[0.03]"
+          className="absolute top-[-15%] left-[-10%] w-[100%] h-[80%] rounded-full"
           style={{
-            background: "radial-gradient(circle, white 0%, transparent 70%)",
+            background: "radial-gradient(ellipse, white 0%, transparent 70%)",
             animation: "pulse-glow 8s ease-in-out infinite",
-            willChange: "opacity",
-            transform: "translateZ(0)",
+            ["--pulse-max" as never]: "0.5",
+            ["--pulse-min" as never]: "0.25",
           }}
         />
         <div
-          className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full opacity-[0.02]"
+          className="absolute bottom-[-15%] right-[-10%] w-[90%] h-[70%] rounded-full"
           style={{
-            background: "radial-gradient(circle, white 0%, transparent 70%)",
+            background: "radial-gradient(ellipse, white 0%, transparent 70%)",
             animation: "pulse-glow 10s ease-in-out infinite 2s",
-            willChange: "opacity",
-            transform: "translateZ(0)",
+            ["--pulse-max" as never]: "0.4",
+            ["--pulse-min" as never]: "0.2",
           }}
         />
       </div>

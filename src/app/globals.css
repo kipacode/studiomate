@@ -135,10 +135,12 @@
   50% { opacity: 0.5; transform: scale(1.2); }
 }
 
-/* Opacity-only pulse for large background blobs — compositor-thread friendly. */
+/* Opacity-only pulse for large background blobs — compositor-thread friendly.
+   Animates between --pulse-max and --pulse-min so each blob can set its own
+   intended brightness range (the animation overrides any static opacity). */
 @keyframes pulse-glow {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%, 100% { opacity: var(--pulse-max, 0.04); }
+  50% { opacity: var(--pulse-min, 0.02); }
 }
 
 @keyframes shimmer {
