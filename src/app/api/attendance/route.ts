@@ -8,15 +8,24 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const date = searchParams.get("date");
+  const from = searchParams.get("from");
+  const to = searchParams.get("to");
   const userId = searchParams.get("userId");
   const withUser = searchParams.get("withUser") === "true";
 
   // Non-admins can only see their own attendance
   const effectiveUserId = session.role !== "admin" ? session.userId : (userId ?? undefined);
 
+  // Build date filter: single `date` wins; otherwise apply from/to range
+  const dateFilter = date
+    ? { date }
+    : (from || to)
+      ? { date: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
+      : {};
+
   const records = await prisma.attendance.findMany({
     where: {
-      ...(date ? { date } : {}),
+      ...dateFilter,
       ...(effectiveUserId ? { userId: effectiveUserId } : {}),
     },
     include: withUser ? { user: { omit: { password: true } }, location: true } : { location: true },

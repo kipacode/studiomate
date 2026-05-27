@@ -83,3 +83,20 @@ export interface DashboardSummary {
 export interface AttendanceWithUser extends Attendance {
   user: User;
 }
+
+// ── Workday Settings ───────────────────────────────────────────────
+
+export interface WorkdaySettings {
+  id: string;
+  /** 0 = Sunday … 6 = Saturday */
+  weekStartDay: number;
+  /** Comma-separated required work-day numbers, e.g. "2,3,4,5,6" */
+  workDays: string;
+  /** Comma-separated optional work-day numbers (count when worked, not penalized when absent) */
+  optionalWorkDays: string;
+  /** "calendar" | "fixed" */
+  monthlyCountMode: string;
+  fixedMonthlyWorkdays: number;
+  updatedAt: string;
+}
+

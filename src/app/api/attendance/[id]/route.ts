@@ -31,11 +31,76 @@ export async function PUT(req: NextRequest, ctx: RouteContext<"/api/attendance/[
 
   const body = await req.json();
 
-  // Non-admins can only check out (set checkOutTime)
-  const data: Record<string, unknown> = session.role === "admin"
-    ? body
-    : { checkOutTime: body.checkOutTime ?? new Date() };
+  if (session.role !== "admin") {
+    // Non-admins can only check out (set checkOutTime)
+    const record = await prisma.attendance.update({
+      where: { id },
+      data: { checkOutTime: body.checkOutTime ?? new Date() },
+    });
+    return Response.json({ attendance: record });
+  }
 
-  const record = await prisma.attendance.update({ where: { id }, data });
+  // Admin edit path — accept a whitelisted set of fields and stamp audit columns.
+  const allowed: Record<string, unknown> = {};
+  let checkInTime: Date | null = existing.checkInTime ? new Date(existing.checkInTime) : null;
+  let status = existing.status;
+
+  if ("checkInTime" in body) {
+    checkInTime = body.checkInTime ? new Date(body.checkInTime) : null;
+    allowed.checkInTime = checkInTime;
+  }
+  if ("checkOutTime" in body) {
+    allowed.checkOutTime = body.checkOutTime ? new Date(body.checkOutTime) : null;
+  }
+  if ("status" in body) {
+    if (!["check-in", "leave"].includes(body.status)) {
+      return Response.json({ error: "status must be 'check-in' or 'leave'" }, { status: 400 });
+    }
+    status = body.status;
+    allowed.status = status;
+    // When switching to leave, clear time fields
+    if (body.status === "leave") {
+      allowed.checkInTime = null;
+      allowed.checkOutTime = null;
+      allowed.isLate = false;
+      checkInTime = null;
+    }
+  }
+  if ("isLate" in body) allowed.isLate = Boolean(body.isLate);
+  if ("flagged" in body) allowed.flagged = Boolean(body.flagged);
+  if ("flagNote" in body) allowed.flagNote = body.flagNote ?? null;
+  if ("locationId" in body) allowed.locationId = body.locationId ?? null;
+
+  // Auto-compute isLate if checkInTime changed and status is check-in
+  if ("checkInTime" in body && status === "check-in" && checkInTime) {
+    const cutoff = new Date(checkInTime);
+    cutoff.setHours(8, 0, 0, 0);
+    allowed.isLate = checkInTime > cutoff;
+  }
+
+  const correctionNote =
+    typeof body.correctionNote === "string" ? body.correctionNote.trim() : "";
+  if (!correctionNote) {
+    return Response.json({ error: "correctionNote is required for admin edits" }, { status: 400 });
+  }
+
+  allowed.correctionNote = correctionNote;
+  allowed.correctedBy = session.userId;
+  allowed.correctedAt = new Date();
+
+  const record = await prisma.attendance.update({ where: { id }, data: allowed });
   return Response.json({ attendance: record });
+}
+
+export async function DELETE(_req: NextRequest, ctx: RouteContext<"/api/attendance/[id]">) {
+  const session = await verifySession();
+  if (!session) return Response.json({ error: "Unauthenticated" }, { status: 401 });
+  if (session.role !== "admin") return Response.json({ error: "Forbidden" }, { status: 403 });
+
+  const { id } = await ctx.params;
+  const existing = await prisma.attendance.findUnique({ where: { id } });
+  if (!existing) return Response.json({ error: "Not found" }, { status: 404 });
+
+  await prisma.attendance.delete({ where: { id } });
+  return Response.json({ success: true });
 }

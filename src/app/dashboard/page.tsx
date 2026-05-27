@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Users, UserX, Clock, Activity, CalendarDays } from "lucide-react";
+import { Users, UserX, Clock, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MoodAvatar } from "@/components/ui/mood-avatar";
@@ -47,7 +47,6 @@ interface DashboardSummary {
   totalLeave: number;
   totalAbsent: number;
   totalLate: number;
-  recentCheckIns: number;
   totalMembers: number;
 }
 
@@ -82,7 +81,6 @@ export default function AdminDashboard() {
     totalLeave: 0,
     totalAbsent: 0,
     totalLate: 0,
-    recentCheckIns: 0,
     totalMembers: 0,
   });
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>([]);
@@ -177,19 +175,12 @@ export default function AdminDashboard() {
       color: "bg-amber-500/15 text-amber-400",
       iconBg: "bg-amber-500/10",
     },
-    {
-      label: "Recent Check-ins",
-      value: summary.recentCheckIns,
-      icon: Activity,
-      color: "bg-sky-500/15 text-sky-400",
-      iconBg: "bg-sky-500/10",
-    },
   ];
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 stagger-children">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 stagger-children">
         {summaryCards.map((card) => (
           <Card key={card.label} className="border-border/50">
             <CardContent className="p-5">

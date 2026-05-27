@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Search,
   Eye,
@@ -10,6 +10,8 @@ import {
   Pencil,
   ToggleLeft,
   Plus,
+  Trash2,
+  PencilLine,
 } from 'lucide-react';
 import { useUsers } from '@/lib/users-context';
 import { useAuth } from '@/lib/auth-context';
@@ -60,6 +62,7 @@ import {
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -70,15 +73,253 @@ interface AttendanceRecord {
   checkInTime: string | null;
   checkOutTime: string | null;
   isLate: boolean;
+  status?: string;
+  correctedBy?: string | null;
+  correctedAt?: string | null;
+  correctionNote?: string | null;
 }
 
-type AttendanceStatus = 'checked_in' | 'late' | 'checked_out' | 'not_yet';
+type AttendanceStatus = 'checked_in' | 'late' | 'checked_out' | 'not_yet' | 'leave';
 
 function resolveStatus(record?: AttendanceRecord): AttendanceStatus {
-  if (!record || !record.checkInTime) return 'not_yet';
+  if (!record) return 'not_yet';
+  if (record.status === 'leave') return 'leave';
+  if (!record.checkInTime) return 'not_yet';
   if (record.checkOutTime) return 'checked_out';
   if (record.isLate) return 'late';
   return 'checked_in';
+}
+
+// ── Date / time helpers (local-tz friendly) ────────────────────────
+
+function firstDayOfMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function timeFromIso(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function combineDateTime(date: string, time: string): string | null {
+  if (!date || !time) return null;
+  // Local time; .toISOString() converts to UTC for transport.
+  return new Date(`${date}T${time}:00`).toISOString();
+}
+
+// ── Attendance Form Dialog (create + edit) ─────────────────────────
+
+interface AttendanceFormState {
+  date: string;
+  status: 'check-in' | 'leave';
+  checkInTime: string; // HH:mm
+  checkOutTime: string; // HH:mm
+  correctionNote: string;
+}
+
+interface AttendanceFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mode: 'create' | 'edit';
+  userId: string;
+  userName: string;
+  record?: AttendanceRecord | null;
+  onSaved: () => void;
+}
+
+function initialFormState(
+  mode: 'create' | 'edit',
+  record: AttendanceRecord | null | undefined,
+): AttendanceFormState {
+  if (mode === 'edit' && record) {
+    return {
+      date: record.date,
+      status: record.status === 'leave' ? 'leave' : 'check-in',
+      checkInTime: timeFromIso(record.checkInTime),
+      checkOutTime: timeFromIso(record.checkOutTime),
+      correctionNote: '',
+    };
+  }
+  return {
+    date: todayStr(),
+    status: 'check-in',
+    checkInTime: '09:00',
+    checkOutTime: '17:00',
+    correctionNote: '',
+  };
+}
+
+// Parent remounts this component (via key) when switching between create/edit
+// or selecting a different record, so the form derives its initial state once.
+function AttendanceFormDialog({
+  open,
+  onOpenChange,
+  mode,
+  userId,
+  userName,
+  record,
+  onSaved,
+}: AttendanceFormDialogProps) {
+  const [form, setForm] = useState<AttendanceFormState>(() => initialFormState(mode, record));
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!form.correctionNote.trim()) {
+      toast.error('Reason / note is required');
+      return;
+    }
+    if (form.status === 'check-in' && !form.checkInTime) {
+      toast.error('Check-in time required');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (mode === 'create') {
+        const res = await fetch('/api/attendance/admin-backfill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            date: form.date,
+            status: form.status,
+            checkInTime:
+              form.status === 'leave' ? null : combineDateTime(form.date, form.checkInTime),
+            checkOutTime:
+              form.status === 'leave' || !form.checkOutTime
+                ? null
+                : combineDateTime(form.date, form.checkOutTime),
+            correctionNote: form.correctionNote.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Failed to save');
+        toast.success('Attendance backfilled');
+      } else if (record) {
+        const res = await fetch(`/api/attendance/${record.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: form.status,
+            checkInTime:
+              form.status === 'leave' ? null : combineDateTime(form.date, form.checkInTime),
+            checkOutTime:
+              form.status === 'leave' || !form.checkOutTime
+                ? null
+                : combineDateTime(form.date, form.checkOutTime),
+            correctionNote: form.correctionNote.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? 'Failed to save');
+        toast.success('Attendance updated');
+      }
+      onSaved();
+      onOpenChange(false);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {mode === 'create' ? 'Add Missing Day' : 'Edit Attendance'}
+          </DialogTitle>
+          <DialogDescription>
+            {mode === 'create'
+              ? `Backfill a missed day for ${userName}.`
+              : `Edit ${userName}'s attendance for ${formatDate(form.date)}.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Date</Label>
+            <Input
+              type="date"
+              value={form.date}
+              disabled={mode === 'edit'}
+              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Status</Label>
+            <Select
+              value={form.status}
+              onValueChange={(v) =>
+                setForm((f) => ({ ...f, status: v as 'check-in' | 'leave' }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="check-in">Present</SelectItem>
+                <SelectItem value="leave">On Leave</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {form.status === 'check-in' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Check-in</Label>
+                <Input
+                  type="time"
+                  value={form.checkInTime}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, checkInTime: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Check-out</Label>
+                <Input
+                  type="time"
+                  value={form.checkOutTime}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, checkOutTime: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>
+              Reason / note
+              <span className="ml-1 text-xs text-rose-400">*</span>
+            </Label>
+            <Textarea
+              value={form.correctionNote}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, correctionNote: e.target.value }))
+              }
+              placeholder="e.g. Member forgot to check in — confirmed present via Slack"
+              rows={3}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : mode === 'create' ? 'Backfill' : 'Save Changes'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ── Member Detail Dialog ────────────────────────────────────────────
@@ -90,25 +331,76 @@ interface MemberDialogProps {
 }
 
 function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
+  const { isAdmin } = useAuth();
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [rangeFrom, setRangeFrom] = useState<string>(firstDayOfMonth());
+  const [rangeTo, setRangeTo] = useState<string>(todayStr());
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
+  const [editingRecord, setEditingRecord] = useState<AttendanceRecord | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const refreshHistory = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   useEffect(() => {
     if (!user || !open) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- standard fetch-on-open loading flag
     setLoadingHistory(true);
-    fetch(`/api/attendance?userId=${user.id}`)
+    fetch(`/api/attendance?userId=${user.id}&from=${rangeFrom}&to=${rangeTo}`)
       .then((r) => r.json())
       .then((data) => {
-        const sorted = (data.attendance ?? [])
-          .sort((a: AttendanceRecord, b: AttendanceRecord) =>
-            b.date.localeCompare(a.date)
-          )
-          .slice(0, 5);
+        if (cancelled) return;
+        const sorted = (data.attendance ?? []).sort(
+          (a: AttendanceRecord, b: AttendanceRecord) => b.date.localeCompare(a.date),
+        );
         setHistory(sorted);
       })
-      .catch(() => setHistory([]))
-      .finally(() => setLoadingHistory(false));
-  }, [user, open]);
+      .catch(() => {
+        if (!cancelled) setHistory([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, open, rangeFrom, rangeTo, refreshKey]);
+
+  async function handleDelete(record: AttendanceRecord) {
+    if (!confirm(`Delete attendance record for ${formatDate(record.date)}? This cannot be undone.`)) {
+      return;
+    }
+    setDeletingId(record.id);
+    try {
+      const res = await fetch(`/api/attendance/${record.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Failed to delete');
+      }
+      toast.success('Record deleted');
+      refreshHistory();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function openCreate() {
+    setFormMode('create');
+    setEditingRecord(null);
+    setFormOpen(true);
+  }
+
+  function openEdit(record: AttendanceRecord) {
+    setFormMode('edit');
+    setEditingRecord(record);
+    setFormOpen(true);
+  }
 
   if (!user) return null;
 
@@ -124,10 +416,10 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Member Details</DialogTitle>
-          <DialogDescription>Profile and recent activity overview.</DialogDescription>
+          <DialogDescription>Profile and attendance history.</DialogDescription>
         </DialogHeader>
 
         {/* Profile Section */}
@@ -198,45 +490,139 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
 
         <Separator className="bg-white/[0.06]" />
 
-        {/* Recent Attendance */}
-        <div className="space-y-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Recent Attendance (Last 5 days)
-          </h4>
+        {/* Attendance History */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Attendance History
+            </h4>
+            {isAdmin && (
+              <Button size="xs" variant="outline" onClick={openCreate} className="gap-1">
+                <Plus className="h-3 w-3" />
+                Add Missing Day
+              </Button>
+            )}
+          </div>
+
+          <div className="flex items-end gap-2 flex-wrap">
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">From</Label>
+              <Input
+                type="date"
+                value={rangeFrom}
+                onChange={(e) => setRangeFrom(e.target.value)}
+                className="h-8 w-36"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[10px] text-muted-foreground">To</Label>
+              <Input
+                type="date"
+                value={rangeTo}
+                onChange={(e) => setRangeTo(e.target.value)}
+                className="h-8 w-36"
+              />
+            </div>
+          </div>
+
           {loadingHistory ? (
             <p className="text-xs text-muted-foreground py-2">Loading…</p>
           ) : history.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2">No attendance records found.</p>
+            <p className="text-xs text-muted-foreground py-2">No attendance records in this range.</p>
           ) : (
-            <div className="space-y-1">
-              {history.map((record) => (
-                <div
-                  key={record.id}
-                  className="flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs hover:bg-white/[0.03]"
-                >
-                  <span className="text-muted-foreground">{formatDate(record.date)}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-muted-foreground">
-                      {record.checkInTime ? formatTime(String(record.checkInTime)) : '—'}
-                      {' → '}
-                      {record.checkOutTime ? formatTime(String(record.checkOutTime)) : '—'}
-                    </span>
-                    {record.isLate ? (
-                      <Badge variant="outline" className="text-[10px] bg-amber-500/15 text-amber-400 border-amber-500/20">
-                        Late
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[10px] bg-emerald-500/15 text-emerald-400 border-emerald-500/20">
-                        On Time
-                      </Badge>
+            <div className="rounded-lg border border-white/[0.06] overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/[0.06] hover:bg-transparent">
+                    <TableHead className="text-[10px] text-muted-foreground">Date</TableHead>
+                    <TableHead className="text-[10px] text-muted-foreground">Times</TableHead>
+                    <TableHead className="text-[10px] text-muted-foreground">Status</TableHead>
+                    {isAdmin && (
+                      <TableHead className="text-[10px] text-muted-foreground text-right">Actions</TableHead>
                     )}
-                  </div>
-                </div>
-              ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {history.map((record) => {
+                    const status = resolveStatus(record);
+                    return (
+                      <TableRow key={record.id} className="border-white/[0.04]">
+                        <TableCell className="text-xs">
+                          <div className="flex items-center gap-1.5">
+                            {formatDate(record.date)}
+                            {record.correctedBy && (
+                              <PencilLine
+                                className="h-3 w-3 text-amber-400"
+                                aria-label={
+                                  record.correctionNote
+                                    ? `Edited by admin: ${record.correctionNote}`
+                                    : 'Edited by admin'
+                                }
+                              >
+                                <title>
+                                  {record.correctionNote
+                                    ? `Edited by admin — ${record.correctionNote}`
+                                    : 'Edited by admin'}
+                                </title>
+                              </PencilLine>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {record.status === 'leave'
+                            ? '—'
+                            : `${record.checkInTime ? formatTime(String(record.checkInTime)) : '—'} → ${record.checkOutTime ? formatTime(String(record.checkOutTime)) : '—'}`}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={cn('text-[10px]', getStatusColor(status))}>
+                            {getStatusLabel(status)}
+                          </Badge>
+                        </TableCell>
+                        {isAdmin && (
+                          <TableCell className="text-right">
+                            <div className="inline-flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                onClick={() => openEdit(record)}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-rose-400"
+                                onClick={() => handleDelete(record)}
+                                disabled={deletingId === record.id}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </div>
       </DialogContent>
+
+      {isAdmin && (
+        <AttendanceFormDialog
+          key={`${formMode}-${editingRecord?.id ?? 'new'}-${formOpen ? 'o' : 'c'}`}
+          open={formOpen}
+          onOpenChange={setFormOpen}
+          mode={formMode}
+          userId={user.id}
+          userName={user.name}
+          record={editingRecord}
+          onSaved={refreshHistory}
+        />
+      )}
     </Dialog>
   );
 }

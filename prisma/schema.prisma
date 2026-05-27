@@ -54,20 +54,24 @@ model Location {
 }
 
 model Attendance {
-  id           String    @id @default(cuid())
-  userId       String
-  date         String
-  checkInTime  DateTime?
-  checkOutTime DateTime?
-  qrTokenUsed  String
-  isLate       Boolean   @default(false)
-  flagged      Boolean   @default(false)
-  flagNote     String?
-  status       String    @default("check-in")
-  locationId   String?
+  id             String    @id @default(cuid())
+  userId         String
+  date           String
+  checkInTime    DateTime?
+  checkOutTime   DateTime?
+  qrTokenUsed    String
+  isLate         Boolean   @default(false)
+  flagged        Boolean   @default(false)
+  flagNote       String?
+  status         String    @default("check-in")
+  locationId     String?
+  /// Set when an admin manually edited or backfilled this record. Stores the admin's user id.
+  correctedBy    String?
+  correctedAt    DateTime?
+  correctionNote String?
 
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  location     Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location       Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
   @@unique([userId, date])
 }
@@ -78,5 +82,30 @@ model QRToken {
   validDate String
   createdBy String
   isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+/// Singleton row — always id = "singleton"
+model WorkdaySettings {
+  id                   String  @id @default("singleton")
+  /// 0 = Sunday, 1 = Monday, …, 6 = Saturday
+  weekStartDay         Int     @default(2)
+  /// Comma-separated list of required work-day numbers, e.g. "2,3,4,5,6" (Tue–Sat)
+  workDays             String  @default("2,3,4,5,6")
+  /// Comma-separated optional days that count as present when worked but don't count as absent when missed, e.g. "0,1" (Sun + Mon)
+  optionalWorkDays     String  @default("0,1")
+  /// "calendar" = count workdays in the month, "fixed" = use fixedCount
+  monthlyCountMode     String  @default("calendar")
+  /// Used when monthlyCountMode = "fixed"
+  fixedMonthlyWorkdays Int     @default(22)
+  updatedAt            DateTime @updatedAt
+}
+
+/// Admin-set days off (holidays, closures). These dates don't count as required workdays.
+model DayOff {
+  id        String   @id @default(cuid())
+  date      String   @unique  // YYYY-MM-DD
+  label     String?            // e.g. "National Holiday"
+  createdBy String
   createdAt DateTime @default(now())
 }

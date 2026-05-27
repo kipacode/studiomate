@@ -114,14 +114,18 @@ export default function LoginPage() {
           className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full opacity-[0.03]"
           style={{
             background: "radial-gradient(circle, white 0%, transparent 70%)",
-            animation: "pulse-dot 8s ease-in-out infinite",
+            animation: "pulse-glow 8s ease-in-out infinite",
+            willChange: "opacity",
+            transform: "translateZ(0)",
           }}
         />
         <div
           className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full opacity-[0.02]"
           style={{
             background: "radial-gradient(circle, white 0%, transparent 70%)",
-            animation: "pulse-dot 10s ease-in-out infinite 2s",
+            animation: "pulse-glow 10s ease-in-out infinite 2s",
+            willChange: "opacity",
+            transform: "translateZ(0)",
           }}
         />
       </div>

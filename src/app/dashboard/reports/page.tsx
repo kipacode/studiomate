@@ -1,29 +1,15 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
-  CalendarDays,
-  GraduationCap,
   Download,
   FileText,
   FileSpreadsheet,
+  Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  mockUsers,
-  mockAttendance,
-} from '@/lib/mock-data';
-import type { User, Attendance } from '@/lib/types';
-import {
-  cn,
-  formatDate,
-  getRoleColor,
-  getRoleLabel,
-  getInitials,
-  getInternProgress,
-} from '@/lib/utils';
+import type { User, UserRole } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -42,345 +28,488 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
+type RoleFilter = 'all' | Extract<UserRole, 'employee' | 'intern' | 'freelancer'>;
+
+const ROLE_OPTIONS: { value: RoleFilter; label: string }[] = [
+  { value: 'all', label: 'All Roles' },
+  { value: 'employee', label: 'Employee' },
+  { value: 'intern', label: 'Intern' },
+  { value: 'freelancer', label: 'Freelancer' },
+];
+
+const ROLE_LABEL: Record<Exclude<RoleFilter, 'all'>, string> = {
+  employee: 'Employee',
+  intern: 'Intern',
+  freelancer: 'Freelancer',
+};
+
 // ── Types ───────────────────────────────────────────────────────────
 
-type ReportType = 'attendance' | 'intern';
-
-interface ReportTypeOption {
-  id: ReportType;
-  title: string;
-  description: string;
-  icon: React.ElementType;
-  accentClass: string;
-  iconBgClass: string;
+interface AttendanceRecord {
+  id: string;
+  userId: string;
+  date: string;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  isLate: boolean;
+  status?: string;
+  correctedBy?: string | null;
+  correctedAt?: string | null;
+  correctionNote?: string | null;
 }
 
 interface AttendanceReportRow {
   user: User;
+  actualWorkdays: number;
   daysPresent: number;
   daysAbsent: number;
   daysLate: number;
-  totalHours: number;
+  daysLeave: number;
+  surplus: number; // present - actualWorkdays (positive = bonus, negative = deficit)
+  corrections: number; // # of records admin manually edited or backfilled
 }
 
-interface InternReportRow {
-  user: User;
-  daysPresent: number;
-  daysLate: number;
-  progress: number;
+// ── Helper: compute report from real attendance data ────────────────
+
+function localDateString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// ── Report type cards ───────────────────────────────────────────────
+function computeReport(
+  users: User[],
+  attendance: AttendanceRecord[],
+  workDays: number[], // required days e.g. [2,3,4,5,6]
+  optionalWorkDays: number[], // off-days that count as present when worked, e.g. [0,1] (Sun + Mon)
+  daysOffDates: Set<string>, // YYYY-MM-DD dates marked as admin days off (holidays/closures)
+  from: string,
+  to: string
+): AttendanceReportRow[] {
+  // Count required work days in range, excluding admin days off.
+  // Use local-tz date strings throughout so the daysOff lookup matches the stored YYYY-MM-DD
+  // (otherwise UTC-shifted .toISOString() drops or shifts the day in non-UTC timezones).
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  let actualWorkdays = 0;
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const dow = cursor.getDay();
+    const dateStr = localDateString(cursor);
+    if (workDays.includes(dow) && !daysOffDates.has(dateStr)) actualWorkdays++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
 
-const reportTypes: ReportTypeOption[] = [
-  {
-    id: 'attendance',
-    title: 'Attendance Report',
-    description: 'Attendance summary by date range',
-    icon: CalendarDays,
-    accentClass: 'text-sky-400',
-    iconBgClass: 'bg-sky-500/10',
-  },
-  {
-    id: 'intern',
-    title: 'Intern Report',
-    description: 'PKL combined attendance + activity',
-    icon: GraduationCap,
-    accentClass: 'text-amber-400',
-    iconBgClass: 'bg-amber-500/10',
-  },
-];
-
-// ── Helper: compute reports from mock data ──────────────────────────
-
-function getAttendanceReport(userIds: string[], from: string, to: string): AttendanceReportRow[] {
-  return userIds.map((userId) => {
-    const user = mockUsers.find((u) => u.id === userId)!;
-    const records = mockAttendance.filter(
-      (r) => r.userId === userId && r.date >= from && r.date <= to,
+  return users.map((user) => {
+    const records = attendance.filter(
+      (r) => r.userId === user.id && r.date >= from && r.date <= to
     );
 
-    const daysPresent = records.filter((r) => r.checkInTime !== null).length;
-    const daysLate = records.filter((r) => r.isLate).length;
+    let requiredPresent = 0; // check-ins on required workdays
+    let offDayBonus = 0;     // any record on an off-day (weekly or admin-set) counts as present
+    let daysLate = 0;
+    let daysLeave = 0;       // leave filed on required workdays only
 
-    // Count weekdays in range
-    const start = new Date(`${from}T00:00:00`);
-    const end = new Date(`${to}T00:00:00`);
-    let totalWeekdays = 0;
-    const cursor = new Date(start);
-    while (cursor <= end) {
-      const dow = cursor.getDay();
-      if (dow !== 0 && dow !== 6) totalWeekdays++;
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    const daysAbsent = Math.max(0, totalWeekdays - daysPresent);
+    for (const r of records) {
+      // Parse YYYY-MM-DD as local date to get the correct day-of-week
+      const [y, m, d] = r.date.split('-').map(Number);
+      const dow = new Date(y, m - 1, d).getDay();
+      const isAdminOff = daysOffDates.has(r.date);
+      const isWeeklyOff = optionalWorkDays.includes(dow);
+      const isOffDay = isAdminOff || isWeeklyOff;
+      const isRequired = workDays.includes(dow) && !isAdminOff;
 
-    // Estimate hours from check-in/out
-    let totalHours = 0;
-    records.forEach((r) => {
-      if (r.checkInTime && r.checkOutTime) {
-        const diff = new Date(r.checkOutTime as string | Date).getTime() - new Date(r.checkInTime as string | Date).getTime();
-        totalHours += diff / (1000 * 60 * 60);
+      if (isOffDay) {
+        // Any record on an off-day (check-in or leave) counts as present surplus
+        offDayBonus++;
+        if (r.status !== 'leave' && r.isLate) daysLate++;
+      } else if (isRequired) {
+        if (r.status === 'leave') {
+          daysLeave++;
+        } else if (r.checkInTime !== null) {
+          requiredPresent++;
+          if (r.isLate) daysLate++;
+        }
       }
-    });
+      // Records on fully non-working days (neither required nor off-day) are ignored.
+    }
 
-    return { user, daysPresent, daysAbsent, daysLate, totalHours: Math.round(totalHours * 10) / 10 };
-  });
-}
+    const daysPresent = requiredPresent + offDayBonus;
+    // Absent = required workdays the member did not show up for (leave counts as missed).
+    const daysAbsent = Math.max(0, actualWorkdays - requiredPresent);
+    // Surplus = net relative to required workdays. Positive = bonus; negative = deficit.
+    const surplus = daysPresent - actualWorkdays;
+    const corrections = records.filter((r) => r.correctedBy).length;
 
-function getInternReport(userIds: string[], from: string, to: string): InternReportRow[] {
-  return userIds.map((userId) => {
-    const user = mockUsers.find((u) => u.id === userId)!;
-    const records = mockAttendance.filter(
-      (r) => r.userId === userId && r.date >= from && r.date <= to,
-    );
-
-    const daysPresent = records.filter((r) => r.checkInTime !== null).length;
-    const daysLate = records.filter((r) => r.isLate).length;
-    const progress =
-      user.internshipStart && user.internshipEnd
-        ? getInternProgress(user.internshipStart, user.internshipEnd)
-        : 0;
-
-    return { user, daysPresent, daysLate, progress };
+    return {
+      user,
+      actualWorkdays,
+      daysPresent,
+      daysAbsent,
+      daysLate,
+      daysLeave,
+      surplus,
+      corrections,
+    };
   });
 }
 
 // ── Main Reports Page ───────────────────────────────────────────────
 
 export default function ReportsPage() {
-  const [selectedType, setSelectedType] = useState<ReportType | null>(null);
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 13);
     return d.toISOString().slice(0, 10);
   });
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dateTo, setDateTo] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [selectedUserId, setSelectedUserId] = useState<string>('all');
   const [generated, setGenerated] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Users filtered by report type
-  const availableUsers = useMemo(() => {
-    if (!selectedType) return [];
-    if (selectedType === 'intern') {
-      return mockUsers.filter((u) => u.role === 'intern' && u.status === 'active');
-    }
-    return mockUsers.filter((u) => u.role !== 'admin' && u.status === 'active');
-  }, [selectedType]);
+  // Real data from API
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
+  const [workDays, setWorkDays] = useState<number[]>([2, 3, 4, 5, 6]);
+  const [optionalWorkDays, setOptionalWorkDays] = useState<number[]>([0, 1]);
+  const [daysOffDates, setDaysOffDates] = useState<Set<string>>(new Set());
+
+  // Fetch users & workday settings on mount
+  useEffect(() => {
+    fetch('/api/users')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users) setAllUsers(data.users);
+      })
+      .catch(() => toast.error('Failed to load users'));
+
+    fetch('/api/settings/workday')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.settings?.workDays) {
+          setWorkDays(
+            data.settings.workDays
+              .split(',')
+              .filter(Boolean)
+              .map(Number)
+          );
+        }
+        if (typeof data.settings?.optionalWorkDays === 'string') {
+          setOptionalWorkDays(
+            data.settings.optionalWorkDays
+              .split(',')
+              .filter(Boolean)
+              .map(Number)
+          );
+        }
+      })
+      .catch(() => {
+        /* use defaults */
+      });
+  }, []);
+
+  // Available members (excluding admins, only active), narrowed by role filter
+  const availableUsers = useMemo(
+    () =>
+      allUsers.filter(
+        (u) =>
+          u.role !== 'admin' &&
+          u.status === 'active' &&
+          (roleFilter === 'all' ? true : u.role === roleFilter)
+      ),
+    [allUsers, roleFilter]
+  );
 
   // The actual user IDs to generate report for
-  const targetUserIds = useMemo(() => {
-    if (selectedUserId === 'all') return availableUsers.map((u) => u.id);
-    return [selectedUserId];
+  const targetUsers = useMemo(() => {
+    if (selectedUserId === 'all') return availableUsers;
+    const found = availableUsers.find((u) => u.id === selectedUserId);
+    return found ? [found] : [];
   }, [selectedUserId, availableUsers]);
 
   // Generate report data
   const attendanceReport = useMemo(() => {
-    if (!generated || selectedType !== 'attendance') return [];
-    return getAttendanceReport(targetUserIds, dateFrom, dateTo);
-  }, [generated, selectedType, targetUserIds, dateFrom, dateTo]);
+    if (!generated || allAttendance.length === 0) return [];
+    return computeReport(
+      targetUsers,
+      allAttendance,
+      workDays,
+      optionalWorkDays,
+      daysOffDates,
+      dateFrom,
+      dateTo,
+    );
+  }, [generated, targetUsers, allAttendance, workDays, optionalWorkDays, daysOffDates, dateFrom, dateTo]);
 
-  const internReport = useMemo(() => {
-    if (!generated || selectedType !== 'intern') return [];
-    return getInternReport(targetUserIds, dateFrom, dateTo);
-  }, [generated, selectedType, targetUserIds, dateFrom, dateTo]);
+  const isIndividual = selectedUserId !== 'all';
+  const selectedUserName = isIndividual
+    ? availableUsers.find((u) => u.id === selectedUserId)?.name ?? null
+    : null;
 
-  const handleSelectType = (type: ReportType) => {
-    setSelectedType(type);
-    setGenerated(false);
-    setSelectedUserId('all');
-  };
+  const handleGenerate = async () => {
+    setLoading(true);
+    try {
+      // Fetch attendance and days off in parallel
+      const [attRes, daysOffRes] = await Promise.all([
+        fetch(`/api/attendance?withUser=true`),
+        fetch('/api/settings/days-off'),
+      ]);
 
-  const handleGenerate = () => {
-    setGenerated(true);
+      const attData = await attRes.json();
+      const daysOffData = await daysOffRes.json();
+
+      if (attRes.ok && attData.attendance) {
+        setAllAttendance(attData.attendance);
+      } else {
+        toast.error('Failed to fetch attendance data');
+        return;
+      }
+
+      if (daysOffRes.ok && daysOffData.daysOff) {
+        const dateSet = new Set<string>(daysOffData.daysOff.map((d: any) => d.date));
+        setDaysOffDates(dateSet);
+      }
+
+      setGenerated(true);
+    } catch {
+      toast.error('Failed to fetch data');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleExport = (format: 'csv' | 'pdf') => {
-    toast.info('Export feature coming soon', {
-      description: `${format.toUpperCase()} export is under development.`,
-    });
+    if (format === 'csv') {
+      const headers = ['Name', 'Role', 'Workdays', 'Present', 'Absent', 'Late', 'Leave', 'Surplus/Minus', 'Corrections'];
+      const rows = attendanceReport.map((row) => [
+        `"${row.user.name}"`,
+        row.user.role,
+        row.actualWorkdays,
+        row.daysPresent,
+        row.daysAbsent,
+        row.daysLate,
+        row.daysLeave,
+        row.surplus >= 0 ? `+${row.surplus}` : row.surplus,
+        row.corrections,
+      ]);
+      const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attendance-report-${dateFrom}-to-${dateTo}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('CSV exported');
+    } else {
+      toast.info('PDF export coming soon');
+    }
   };
+
+  // Summary stats
+  const totals = useMemo(() => {
+    if (attendanceReport.length === 0) return null;
+    return {
+      present: attendanceReport.reduce((s, r) => s + r.daysPresent, 0),
+      absent: attendanceReport.reduce((s, r) => s + r.daysAbsent, 0),
+      late: attendanceReport.reduce((s, r) => s + r.daysLate, 0),
+      leave: attendanceReport.reduce((s, r) => s + r.daysLeave, 0),
+      surplus: attendanceReport.reduce((s, r) => s + r.surplus, 0),
+      corrections: attendanceReport.reduce((s, r) => s + r.corrections, 0),
+    };
+  }, [attendanceReport]);
+
+  // Actual workdays (same for all users)
+  const actualWorkdays = attendanceReport.length > 0 ? attendanceReport[0].actualWorkdays : 0;
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-6">
       {/* ── Header ──────────────────────────────────────────── */}
       <div className="animate-fade-in">
-        <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Attendance Reports</h1>
         <p className="text-sm text-muted-foreground">
-          Generate and export team reports for attendance, activity, and intern performance.
+          Generate and export team or individual attendance reports.
         </p>
       </div>
 
-      {/* ── Report Type Selector ─────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {reportTypes.map((rt, index) => {
-          const Icon = rt.icon;
-          const isSelected = selectedType === rt.id;
-
-          return (
-            <Card
-              key={rt.id}
-              onClick={() => handleSelectType(rt.id)}
-              className={cn(
-                'cursor-pointer rounded-xl border transition-all duration-200 animate-fade-in hover:bg-white/[0.05]',
-                isSelected
-                  ? 'border-white/[0.15] bg-white/[0.06]'
-                  : 'border-white/[0.06] bg-white/[0.03]',
-              )}
-              style={{ animationDelay: `${index * 60}ms` }}
-            >
-              <CardContent className="flex items-center gap-4 p-5">
-                <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', rt.iconBgClass)}>
-                  <Icon className={cn('h-5 w-5', rt.accentClass)} />
-                </div>
-                <div className="space-y-0.5">
-                  <p className="text-sm font-semibold">{rt.title}</p>
-                  <p className="text-xs text-muted-foreground">{rt.description}</p>
-                </div>
-                {isSelected && (
-                  <div className={cn('ml-auto h-2 w-2 rounded-full animate-pulse-dot', rt.accentClass.replace('text-', 'bg-'))} />
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
       {/* ── Filters & Generate ───────────────────────────────── */}
-      {selectedType && (
-        <Card className="overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.03] animate-fade-in">
-          <CardContent className="p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">From</label>
-                <Input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => {
-                    setDateFrom(e.target.value);
-                    setGenerated(false);
-                  }}
-                  className="w-40"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">To</label>
-                <Input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => {
-                    setDateTo(e.target.value);
-                    setGenerated(false);
-                  }}
-                  className="w-40"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Member</label>
-                <Select
-                  value={selectedUserId}
-                  onValueChange={(val) => {
-                    setSelectedUserId(val || "all");
-                    setGenerated(false);
-                  }}
-                >
-                  <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Select member" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Members</SelectItem>
-                    {availableUsers.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={handleGenerate} className="h-8 gap-1.5 sm:ml-auto">
-                <FileText className="h-3.5 w-3.5" />
-                Generate Report
-              </Button>
+      <Card className="overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.03] animate-fade-in">
+        <CardContent className="p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">From</label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => {
+                  setDateFrom(e.target.value);
+                  setGenerated(false);
+                }}
+                className="h-9 w-40"
+              />
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">To</label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => {
+                  setDateTo(e.target.value);
+                  setGenerated(false);
+                }}
+                className="h-9 w-40"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Role</label>
+              <Select
+                value={roleFilter}
+                onValueChange={(val) => {
+                  setRoleFilter((val || 'all') as RoleFilter);
+                  setSelectedUserId('all');
+                  setGenerated(false);
+                }}
+              >
+                <SelectTrigger className="!h-9 w-40">
+                  <SelectValue placeholder="Select role">
+                    {(val) =>
+                      ROLE_OPTIONS.find((o) => o.value === val)?.label ?? 'Select role'
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">Member</label>
+              <Select
+                value={selectedUserId}
+                onValueChange={(val) => {
+                  setSelectedUserId(val || 'all');
+                  setGenerated(false);
+                }}
+              >
+                <SelectTrigger className="!h-9 w-56">
+                  <SelectValue placeholder="Select member">
+                    {(val) => {
+                      if (!val || val === 'all') return 'All Members';
+                      return (
+                        allUsers.find((u) => u.id === val)?.name ?? 'Select member'
+                      );
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Members</SelectItem>
+                  {availableUsers.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              onClick={handleGenerate}
+              disabled={loading}
+              className="h-9 gap-1.5 sm:ml-auto"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              {loading ? 'Loading…' : 'Generate Report'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ── Report Results ───────────────────────────────────── */}
-      {generated && selectedType === 'attendance' && (
+      {generated && (
         <ReportResultCard
-          title="Attendance Report"
+          title={
+            isIndividual
+              ? `Attendance Report — ${selectedUserName ?? ''}`
+              : `Attendance Report — ${
+                  roleFilter === 'all' ? 'All Members' : `All ${ROLE_LABEL[roleFilter]}s`
+                }`
+          }
+          subtitle={`${dateFrom} to ${dateTo} · ${actualWorkdays} required workdays`}
           onExport={handleExport}
         >
           <Table>
             <TableHeader>
               <TableRow className="border-white/[0.06] hover:bg-transparent">
                 <TableHead className="text-xs text-muted-foreground">Name</TableHead>
-                <TableHead className="text-xs text-muted-foreground text-right">Days Present</TableHead>
-                <TableHead className="text-xs text-muted-foreground text-right">Days Absent</TableHead>
-                <TableHead className="text-xs text-muted-foreground text-right">Days Late</TableHead>
-                <TableHead className="text-xs text-muted-foreground text-right">Total Hours</TableHead>
+                <TableHead className="text-xs text-muted-foreground">Role</TableHead>
+                <TableHead className="text-xs text-muted-foreground text-right">Present</TableHead>
+                <TableHead className="text-xs text-muted-foreground text-right">Absent</TableHead>
+                <TableHead className="text-xs text-muted-foreground text-right">Late</TableHead>
+                <TableHead className="text-xs text-muted-foreground text-right">Leave</TableHead>
+                <TableHead className="text-xs text-muted-foreground text-right">Surplus/Minus</TableHead>
+                <TableHead className="text-xs text-muted-foreground text-right">Corrections</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {attendanceReport.map((row) => (
                 <TableRow key={row.user.id} className="border-white/[0.04] hover:bg-white/[0.03]">
-                  <TableCell className="font-medium">{row.user.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      {row.user.name}
+                      {row.corrections > 0 && (
+                        <Pencil
+                          className="h-3 w-3 text-amber-400"
+                          aria-label="Includes admin-edited entries"
+                        >
+                          <title>{`${row.corrections} admin-edited ${row.corrections === 1 ? 'entry' : 'entries'}`}</title>
+                        </Pencil>
+                      )}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground capitalize">{row.user.role}</TableCell>
                   <TableCell className="text-right text-emerald-400">{row.daysPresent}</TableCell>
-                  <TableCell className="text-right text-neutral-400">{row.daysAbsent}</TableCell>
+                  <TableCell className="text-right text-rose-400">{row.daysAbsent}</TableCell>
                   <TableCell className="text-right text-amber-400">{row.daysLate}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{row.totalHours}h</TableCell>
+                  <TableCell className="text-right text-indigo-400">{row.daysLeave}</TableCell>
+                  <TableCell className={`text-right font-semibold ${
+                    row.surplus > 0 ? 'text-emerald-400' : row.surplus < 0 ? 'text-rose-400' : 'text-muted-foreground'
+                  }`}>
+                    {row.surplus > 0 ? `+${row.surplus}` : row.surplus}
+                  </TableCell>
+                  <TableCell className={`text-right ${row.corrections > 0 ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                    {row.corrections}
+                  </TableCell>
                 </TableRow>
               ))}
-              {attendanceReport.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
-                    No attendance data found for the selected range.
+
+              {/* Totals row */}
+              {totals && attendanceReport.length > 1 && (
+                <TableRow className="border-white/[0.08] bg-white/[0.02] font-medium">
+                  <TableCell>Total</TableCell>
+                  <TableCell />
+                  <TableCell className="text-right text-emerald-400">{totals.present}</TableCell>
+                  <TableCell className="text-right text-rose-400">{totals.absent}</TableCell>
+                  <TableCell className="text-right text-amber-400">{totals.late}</TableCell>
+                  <TableCell className="text-right text-indigo-400">{totals.leave}</TableCell>
+                  <TableCell className={`text-right font-semibold ${
+                    totals.surplus > 0 ? 'text-emerald-400' : totals.surplus < 0 ? 'text-rose-400' : 'text-muted-foreground'
+                  }`}>
+                    {totals.surplus > 0 ? `+${totals.surplus}` : totals.surplus}
+                  </TableCell>
+                  <TableCell className={`text-right ${totals.corrections > 0 ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                    {totals.corrections}
                   </TableCell>
                 </TableRow>
               )}
-            </TableBody>
-          </Table>
-        </ReportResultCard>
-      )}
 
-      {generated && selectedType === 'intern' && (
-        <ReportResultCard
-          title="Intern Report"
-          onExport={handleExport}
-        >
-          <Table>
-            <TableHeader>
-              <TableRow className="border-white/[0.06] hover:bg-transparent">
-                <TableHead className="text-xs text-muted-foreground">Name</TableHead>
-                <TableHead className="text-xs text-muted-foreground text-right">Days Present</TableHead>
-                <TableHead className="text-xs text-muted-foreground text-right">Days Late</TableHead>
-                <TableHead className="text-xs text-muted-foreground text-right">Progress %</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {internReport.map((row) => (
-                <TableRow key={row.user.id} className="border-white/[0.04] hover:bg-white/[0.03]">
-                  <TableCell className="font-medium">{row.user.name}</TableCell>
-                  <TableCell className="text-right text-emerald-400">{row.daysPresent}</TableCell>
-                  <TableCell className="text-right text-amber-400">{row.daysLate}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-white/[0.06]">
-                        <div
-                          className="h-full rounded-full bg-emerald-500 transition-all"
-                          style={{ width: `${row.progress}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-muted-foreground tabular-nums">{row.progress}%</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {internReport.length === 0 && (
+              {attendanceReport.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
-                    No intern data found for the selected range.
+                  <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                    No attendance data found for the selected range.
                   </TableCell>
                 </TableRow>
               )}
@@ -396,17 +525,24 @@ export default function ReportsPage() {
 
 function ReportResultCard({
   title,
+  subtitle,
   onExport,
   children,
 }: {
   title: string;
+  subtitle?: string;
   onExport: (format: 'csv' | 'pdf') => void;
   children: React.ReactNode;
 }) {
   return (
     <Card className="overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.03] animate-slide-up">
       <CardHeader className="flex flex-row items-center justify-between px-5 pt-5 pb-3">
-        <CardTitle className="text-base font-semibold">{title}</CardTitle>
+        <div>
+          <CardTitle className="text-base font-semibold">{title}</CardTitle>
+          {subtitle && (
+            <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+          )}
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => onExport('csv')}>
             <FileSpreadsheet className="h-3.5 w-3.5" />
