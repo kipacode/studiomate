@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifySession } from "@/lib/dal";
 
+const VALID_STATUSES = ["check-in", "leave", "sakit", "alpha", "comp_off"];
+
 /**
  * Admin-only: create an Attendance record for a past date the member missed,
  * or where leave/correction needs to be applied retroactively.
@@ -33,8 +35,11 @@ export async function POST(req: NextRequest) {
   if (!correctionNote || typeof correctionNote !== "string" || !correctionNote.trim()) {
     return Response.json({ error: "correctionNote is required" }, { status: 400 });
   }
-  if (!["check-in", "leave"].includes(status)) {
-    return Response.json({ error: "status must be 'check-in' or 'leave'" }, { status: 400 });
+  if (!VALID_STATUSES.includes(status)) {
+    return Response.json(
+      { error: `status must be one of: ${VALID_STATUSES.join(", ")}` },
+      { status: 400 },
+    );
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -69,8 +74,9 @@ export async function POST(req: NextRequest) {
     data: {
       userId,
       date,
-      checkInTime: status === "leave" ? null : parsedCheckIn,
-      checkOutTime: status === "leave" ? null : parsedCheckOut,
+      // Only a real "check-in" carries clock times; comp_off counts as present but has none.
+      checkInTime: status === "check-in" ? parsedCheckIn : null,
+      checkOutTime: status === "check-in" ? parsedCheckOut : null,
       qrTokenUsed: "ADMIN_BACKFILL",
       isLate,
       status,

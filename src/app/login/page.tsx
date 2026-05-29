@@ -10,17 +10,28 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { QrScanner } from "@/components/qr-scanner";
 import { Html5Qrcode } from "html5-qrcode";
-import { Camera, Upload, Key, QrCode, Loader2 } from "lucide-react";
+import { Camera, Upload, Key, QrCode, Loader2, CalendarPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 export default function LoginPage() {
   const [loginMode, setLoginMode] = useState<"qr" | "credentials">("qr");
   const [qrMode, setQrMode] = useState<"camera" | "upload" | null>(null);
-  const [selectedStatus, setSelectedStatus] = useState<"check-in" | "leave">("check-in");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [scanningFile, setScanningFile] = useState(false);
+
+  // Leave registration — separate flow, requires deliberate action
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [leaveQrMode, setLeaveQrMode] = useState<"camera" | "upload" | null>(null);
+  const [scanningLeaveFile, setScanningLeaveFile] = useState(false);
   const { loginFromAPI } = useAuth();
   const router = useRouter();
 
@@ -51,19 +62,21 @@ export default function LoginPage() {
     setLoading(false);
   }
 
-  async function handleQrLogin(qrContent: string) {
+  async function handleQrLogin(qrContent: string, status: "check-in" | "leave" = "check-in") {
     if (!qrContent) return;
     setLoading(true);
     try {
       const res = await fetch("/api/auth/qr-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qrContent, status: selectedStatus }),
+        body: JSON.stringify({ qrContent, status }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         loginFromAPI(data.user);
         toast.success(`Welcome back, ${data.user.name}!`);
+        setLeaveDialogOpen(false);
+        setLeaveQrMode(null);
         router.push(data.user.role === "admin" ? "/dashboard" : "/me");
         return;
       }
@@ -73,6 +86,29 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
       setQrMode(null);
+    }
+  }
+
+  async function handleLeaveFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setScanningLeaveFile(true);
+    const tempId = "qr-leave-file-reader-temp-" + Date.now();
+    const tempDiv = document.createElement("div");
+    tempDiv.id = tempId;
+    tempDiv.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:300px;height:300px;visibility:hidden;pointer-events:none;";
+    document.body.appendChild(tempDiv);
+    const html5QrCode = new Html5Qrcode(tempId);
+    try {
+      const decodedText = await html5QrCode.scanFile(file, false);
+      await handleQrLogin(decodedText, "leave");
+    } catch {
+      toast.error("No valid QR code detected. Please try again.");
+    } finally {
+      setScanningLeaveFile(false);
+      try { html5QrCode.clear(); } catch {}
+      try { document.body.removeChild(tempDiv); } catch {}
     }
   }
 
@@ -176,58 +212,41 @@ export default function LoginPage() {
           {/* QR Login Mode */}
           {loginMode === "qr" && (
             <div className="space-y-5">
-              {/* Attendance Status Selection */}
-              <div className="space-y-2">
-                <Label className="text-xs font-medium text-neutral-300">Attendance Status for Today</Label>
-                <div className="grid grid-cols-2 gap-2 bg-neutral-900/60 p-1 rounded-lg border border-white/[0.04]">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatus("check-in")}
-                    className={cn(
-                      "py-2 text-xs font-medium rounded-md transition-all duration-200",
-                      selectedStatus === "check-in"
-                        ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm"
-                        : "text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.02]"
-                    )}
-                  >
-                    Check-in
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatus("leave")}
-                    className={cn(
-                      "py-2 text-xs font-medium rounded-md transition-all duration-200",
-                      selectedStatus === "leave"
-                        ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm"
-                        : "text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.02]"
-                    )}
-                  >
-                    On Leave
-                  </button>
-                </div>
-              </div>
 
-              {/* QR Options */}
+              {/* QR Options — always check-in */}
               {qrMode === null ? (
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex flex-col items-center justify-center h-28 gap-2 hover:bg-white/[0.04] transition-all border-dashed border-white/10"
-                    onClick={() => setQrMode("camera")}
-                  >
-                    <Camera className="h-5 w-5 text-emerald-400" />
-                    <span className="text-xs font-medium">Scan ID Card</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex flex-col items-center justify-center h-28 gap-2 hover:bg-white/[0.04] transition-all border-dashed border-white/10"
-                    onClick={() => setQrMode("upload")}
-                  >
-                    <Upload className="h-5 w-5 text-sky-400" />
-                    <span className="text-xs font-medium">Upload QR File</span>
-                  </Button>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex flex-col items-center justify-center h-28 gap-2 hover:bg-white/[0.04] transition-all border-dashed border-white/10"
+                      onClick={() => setQrMode("camera")}
+                    >
+                      <Camera className="h-5 w-5 text-emerald-400" />
+                      <span className="text-xs font-medium">Scan ID Card</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex flex-col items-center justify-center h-28 gap-2 hover:bg-white/[0.04] transition-all border-dashed border-white/10"
+                      onClick={() => setQrMode("upload")}
+                    >
+                      <Upload className="h-5 w-5 text-sky-400" />
+                      <span className="text-xs font-medium">Upload QR File</span>
+                    </Button>
+                  </div>
+
+                  {/* Leave — deliberately separate and below the main action */}
+                  <div className="pt-1 text-center">
+                    <button
+                      type="button"
+                      onClick={() => { setLeaveDialogOpen(true); setLeaveQrMode(null); }}
+                      className="text-xs text-neutral-500 hover:text-indigo-400 transition-colors hover:underline underline-offset-2"
+                    >
+                      I'm on leave today
+                    </button>
+                  </div>
                 </div>
               ) : qrMode === "camera" ? (
                 <div className="space-y-4 animate-fade-in">
@@ -323,6 +342,83 @@ export default function LoginPage() {
 
         </CardContent>
       </Card>
+
+      {/* ── Leave Registration Dialog ── */}
+      <Dialog open={leaveDialogOpen} onOpenChange={(open) => { setLeaveDialogOpen(open); if (!open) setLeaveQrMode(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarPlus className="h-4 w-4 text-indigo-400" />
+              Register as On Leave
+            </DialogTitle>
+            <DialogDescription>
+              Scan your QR ID card to register as <span className="font-medium text-foreground">On Leave</span> for today.
+              If you actually came in, close this and scan normally to check in.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            {leaveQrMode === null ? (
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex flex-col items-center justify-center h-24 gap-2 hover:bg-indigo-500/[0.05] border-dashed border-indigo-500/20"
+                  onClick={() => setLeaveQrMode("camera")}
+                >
+                  <Camera className="h-5 w-5 text-indigo-400" />
+                  <span className="text-xs font-medium">Scan ID Card</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex flex-col items-center justify-center h-24 gap-2 hover:bg-indigo-500/[0.05] border-dashed border-indigo-500/20"
+                  onClick={() => setLeaveQrMode("upload")}
+                >
+                  <Upload className="h-5 w-5 text-indigo-400" />
+                  <span className="text-xs font-medium">Upload QR File</span>
+                </Button>
+              </div>
+            ) : leaveQrMode === "camera" ? (
+              <div className="space-y-3 animate-fade-in">
+                <QrScanner
+                  onScanSuccess={(text) => handleQrLogin(text, "leave")}
+                  onScanFailure={() => {}}
+                />
+                <Button type="button" variant="ghost" size="sm" className="w-full text-neutral-400" onClick={() => setLeaveQrMode(null)}>
+                  Back
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3 animate-fade-in">
+                <div className={cn(
+                  "flex flex-col items-center justify-center border border-dashed rounded-lg p-5 bg-neutral-900/40 relative transition-colors cursor-pointer",
+                  scanningLeaveFile ? "border-indigo-500/30 bg-indigo-900/10 cursor-wait" : "border-indigo-500/20 hover:border-indigo-500/40"
+                )}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLeaveFileChange}
+                    disabled={loading || scanningLeaveFile}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-wait"
+                  />
+                  {scanningLeaveFile ? (
+                    <Loader2 className="h-6 w-6 text-indigo-400 mb-2 animate-spin" />
+                  ) : (
+                    <Upload className="h-6 w-6 text-indigo-500 mb-2" />
+                  )}
+                  <p className="text-xs text-neutral-300 font-medium text-center">
+                    {scanningLeaveFile ? "Reading QR code…" : "Click to upload QR image"}
+                  </p>
+                </div>
+                <Button type="button" variant="ghost" size="sm" className="w-full text-neutral-400" onClick={() => setLeaveQrMode(null)}>
+                  Back
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

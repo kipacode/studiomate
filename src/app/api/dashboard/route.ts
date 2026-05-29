@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { verifySession } from "@/lib/dal";
+import { isPresentStatus, isExcusedStatus } from "@/lib/utils";
 
 export async function GET() {
   const session = await verifySession();
@@ -28,21 +29,25 @@ export async function GET() {
         const records = await prisma.attendance.findMany({ where: { date: dateStr } });
         days.push({
           day: dayNames[d.getDay()],
-          present: records.filter((r: { status: string }) => r.status !== "leave").length,
-          late: records.filter((r: { isLate: boolean, status: string }) => r.status !== "leave" && r.isLate).length,
+          present: records.filter((r) => isPresentStatus(r.status)).length,
+          late: records.filter((r) => isPresentStatus(r.status) && r.isLate).length,
         });
       }
       return days;
     })(),
   ]);
 
+  const totalPresent = todayAttendance.filter((a) => isPresentStatus(a.status)).length;
+  const totalLeave = todayAttendance.filter((a) => isExcusedStatus(a.status)).length;
+
   const summary = {
-    totalPresent: todayAttendance.filter((a) => a.status !== "leave").length,
-    totalLeave: todayAttendance.filter((a) => a.status === "leave").length,
-    totalAbsent: totalMembers - todayAttendance.length,
-    totalLate: todayAttendance.filter((a) => a.status !== "leave" && a.isLate).length,
+    totalPresent,
+    totalLeave,
+    // Absent = members with no record + unexcused (alpha) records.
+    totalAbsent: totalMembers - totalPresent - totalLeave,
+    totalLate: todayAttendance.filter((a) => isPresentStatus(a.status) && a.isLate).length,
     recentCheckIns: todayAttendance.filter(
-      (a: { checkInTime: Date | null, status: string }) => a.status !== "leave" && a.checkInTime && new Date(a.checkInTime) >= oneHourAgo
+      (a) => isPresentStatus(a.status) && a.checkInTime && new Date(a.checkInTime) >= oneHourAgo
     ).length,
     totalMembers,
   };

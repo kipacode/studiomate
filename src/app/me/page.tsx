@@ -10,11 +10,21 @@ import {
   formatDate,
   getInternProgress,
   getInternDaysRemaining,
+  isPresentStatus,
+  isExcusedStatus,
 } from "@/lib/utils";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 import {
   LogIn,
@@ -41,10 +51,10 @@ export default function MemberDashboardPage() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
-  const [selectedStatus, setSelectedStatus] = useState<"check-in" | "leave">("check-in");
   const [registeringLeave, setRegisteringLeave] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
   const [showConfirmCheckOut, setShowConfirmCheckOut] = useState(false);
+  const [showConfirmLeave, setShowConfirmLeave] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -161,19 +171,28 @@ export default function MemberDashboardPage() {
     monday.setDate(now.getDate() - ((dayOfWeek === 0 ? 7 : dayOfWeek) - 1));
     monday.setHours(0, 0, 0, 0);
 
-    const days: { label: string; status: "present" | "late" | "absent" | "future" | "leave" }[] = [];
-    for (let i = 0; i < 5; i++) {
+    // Sun (0) and Mon (1) are optional work days — no record ≠ absent
+    const OPTIONAL_DAYS = new Set([0, 1]);
+    const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+    const days: { label: string; status: "present" | "late" | "absent" | "future" | "leave" | "weekend" }[] = [];
+    for (let i = 0; i < 7; i++) {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
-      const dateStr = d.toISOString().slice(0, 10);
-      const labels = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+      // Local-tz date string to match stored YYYY-MM-DD values
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const dow = d.getDay();
       const record = attendanceHistory.find((r) => r.date === dateStr);
 
-      let status: "present" | "late" | "absent" | "future" | "leave" = "absent";
+      let status: "present" | "late" | "absent" | "future" | "leave" | "weekend";
       if (d > now) {
         status = "future";
-      } else if (record) {
-        status = record.status === "leave" ? "leave" : (record.isLate ? "late" : "present");
+      } else if (record && record.status !== "alpha") {
+        status = isExcusedStatus(record.status) ? "leave" : record.isLate ? "late" : "present";
+      } else if (OPTIONAL_DAYS.has(dow)) {
+        status = "weekend"; // optional day, no attendance — not penalised
+      } else {
+        status = "absent";
       }
 
       days.push({ label: labels[i], status });
@@ -188,9 +207,9 @@ export default function MemberDashboardPage() {
     const monthRecords = attendanceHistory.filter((r) => r.date.startsWith(monthStr));
 
     return {
-      present: monthRecords.filter((r) => r.status !== "leave" && r.checkInTime && !r.isLate).length,
-      late: monthRecords.filter((r) => r.status !== "leave" && r.isLate).length,
-      leave: monthRecords.filter((r) => r.status === "leave").length,
+      present: monthRecords.filter((r) => isPresentStatus(r.status) && !r.isLate).length,
+      late: monthRecords.filter((r) => isPresentStatus(r.status) && r.isLate).length,
+      leave: monthRecords.filter((r) => isExcusedStatus(r.status)).length,
     };
   }, [user, attendanceHistory]);
 
@@ -367,56 +386,26 @@ export default function MemberDashboardPage() {
                 </div>
               </>
             ) : (
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <div className="grid grid-cols-2 gap-1 bg-neutral-900/60 p-1 rounded-lg border border-white/[0.04] w-40">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatus("check-in")}
-                    className={cn(
-                      "py-1.5 text-xs font-medium rounded-md transition-all duration-200",
-                      selectedStatus === "check-in"
-                        ? "bg-emerald-600 text-white shadow-sm"
-                        : "text-neutral-400 hover:text-neutral-200"
-                    )}
-                  >
-                    Check-in
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatus("leave")}
-                    className={cn(
-                      "py-1.5 text-xs font-medium rounded-md transition-all duration-200",
-                      selectedStatus === "leave"
-                        ? "bg-indigo-600 text-white shadow-sm"
-                        : "text-neutral-400 hover:text-neutral-200"
-                    )}
-                  >
-                    On Leave
-                  </button>
-                </div>
+              <div className="flex flex-col items-end gap-2">
+                {/* Primary action */}
+                <Button
+                  size="lg"
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
+                  onClick={handleCheckIn}
+                  disabled={checkingIn}
+                >
+                  <LogIn className="size-4" />
+                  {checkingIn ? "Processing..." : "Check In"}
+                </Button>
 
-                {selectedStatus === "check-in" ? (
-                  <Button
-                    size="lg"
-                    className="gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
-                    onClick={handleCheckIn}
-                    disabled={checkingIn}
-                  >
-                    <LogIn className="size-4" />
-                    {checkingIn ? "Processing..." : "Check In"}
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="gap-2 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/10"
-                    onClick={handleRegisterLeave}
-                    disabled={registeringLeave}
-                  >
-                    <CalendarPlus className="size-4" />
-                    {registeringLeave ? "Processing..." : "Register Leave"}
-                  </Button>
-                )}
+                {/* Secondary: opens a blocking dialog — cannot be confirmed by accident */}
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmLeave(true)}
+                  className="text-xs text-neutral-500 hover:text-indigo-400 transition-colors hover:underline underline-offset-2"
+                >
+                  I'm on leave today
+                </button>
               </div>
             )}
           </div>
@@ -511,7 +500,7 @@ export default function MemberDashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-between">
               {weekAttendance.map((day) => (
                 <div key={day.label} className="flex flex-col items-center gap-1.5">
                   <span className="text-[10px] font-medium text-neutral-500 uppercase">
@@ -519,7 +508,7 @@ export default function MemberDashboardPage() {
                   </span>
                   <div
                     className={cn(
-                      "size-8 rounded-full flex items-center justify-center text-xs font-medium transition-all",
+                      "size-7 rounded-full flex items-center justify-center text-[11px] font-medium transition-all",
                       day.status === "present" &&
                         "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30",
                       day.status === "late" &&
@@ -529,7 +518,9 @@ export default function MemberDashboardPage() {
                       day.status === "leave" &&
                         "bg-indigo-500/15 text-indigo-400 ring-1 ring-indigo-500/30",
                       day.status === "future" &&
-                        "bg-neutral-800/30 text-neutral-600 ring-1 ring-neutral-700/30"
+                        "bg-neutral-800/30 text-neutral-600 ring-1 ring-neutral-700/30",
+                      day.status === "weekend" &&
+                        "bg-neutral-800/20 text-neutral-700 ring-1 ring-neutral-800/40"
                     )}
                   >
                     {day.status === "present" && "✓"}
@@ -537,11 +528,12 @@ export default function MemberDashboardPage() {
                     {day.status === "absent" && "✕"}
                     {day.status === "leave" && "L"}
                     {day.status === "future" && "·"}
+                    {day.status === "weekend" && "·"}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="mt-3 flex items-center gap-4 text-[10px] text-neutral-500">
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] text-neutral-500">
               <span className="flex items-center gap-1">
                 <span className="size-2 rounded-full bg-emerald-500" /> Present
               </span>
@@ -553,6 +545,9 @@ export default function MemberDashboardPage() {
               </span>
               <span className="flex items-center gap-1">
                 <span className="size-2 rounded-full bg-indigo-500" /> Leave
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="size-2 rounded-full bg-neutral-800" /> Day off
               </span>
             </div>
           </CardContent>
@@ -644,6 +639,41 @@ export default function MemberDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Leave Confirmation Dialog ── */}
+      <Dialog open={showConfirmLeave} onOpenChange={setShowConfirmLeave}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarPlus className="size-4 text-indigo-400" />
+              Register as On Leave?
+            </DialogTitle>
+            <DialogDescription>
+              This will mark you as <span className="font-medium text-foreground">On Leave</span> for today.
+              If you actually came in, tap <span className="font-medium text-foreground">Cancel</span> and use Check In instead.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowConfirmLeave(false)}
+              disabled={registeringLeave}
+            >
+              Cancel — I meant to check in
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10"
+              onClick={() => { handleRegisterLeave(); setShowConfirmLeave(false); }}
+              disabled={registeringLeave}
+            >
+              <CalendarPlus className="size-4 mr-1.5" />
+              {registeringLeave ? "Registering…" : "Yes, I'm on leave"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

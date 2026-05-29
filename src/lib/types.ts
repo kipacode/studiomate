@@ -1,7 +1,15 @@
 // ── Role & Category Types ──────────────────────────────────────────
 
 export type UserRole = "admin" | "employee" | "intern" | "freelancer";
-export type AttendanceStatus = "checked_in" | "checked_out" | "not_yet" | "late" | "leave";
+export type AttendanceStatus =
+  | "checked_in"
+  | "checked_out"
+  | "not_yet"
+  | "late"
+  | "leave"
+  | "sakit"
+  | "alpha"
+  | "comp_off";
 export type Mood =
   | "happy"
   | "calm"

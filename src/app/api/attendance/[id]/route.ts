@@ -53,13 +53,16 @@ export async function PUT(req: NextRequest, ctx: RouteContext<"/api/attendance/[
     allowed.checkOutTime = body.checkOutTime ? new Date(body.checkOutTime) : null;
   }
   if ("status" in body) {
-    if (!["check-in", "leave"].includes(body.status)) {
-      return Response.json({ error: "status must be 'check-in' or 'leave'" }, { status: 400 });
+    if (!["check-in", "leave", "sakit", "alpha", "comp_off"].includes(body.status)) {
+      return Response.json(
+        { error: "status must be one of: check-in, leave, sakit, alpha, comp_off" },
+        { status: 400 },
+      );
     }
     status = body.status;
     allowed.status = status;
-    // When switching to leave, clear time fields
-    if (body.status === "leave") {
+    // Any non-attendance status clears the time fields.
+    if (body.status !== "check-in") {
       allowed.checkInTime = null;
       allowed.checkOutTime = null;
       allowed.isLate = false;

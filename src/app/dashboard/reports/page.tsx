@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { User, UserRole } from '@/lib/types';
+import { isPresentStatus, isExcusedStatus } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,6 +76,35 @@ function localDateString(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Count required work days in [fromStr, toStr], excluding admin days off.
+// Use local-tz date strings so the daysOff lookup matches the stored YYYY-MM-DD.
+function countWorkdays(
+  fromStr: string,
+  toStr: string,
+  workDays: number[],
+  daysOffDates: Set<string>
+): number {
+  const end = new Date(`${toStr}T00:00:00`);
+  let n = 0;
+  const cursor = new Date(`${fromStr}T00:00:00`);
+  while (cursor <= end) {
+    const dateStr = localDateString(cursor);
+    if (workDays.includes(cursor.getDay()) && !daysOffDates.has(dateStr)) n++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return n;
+}
+
+// A member isn't penalized for workdays before they joined. Effective start =
+// their join date (internshipStart for interns, else createdAt), but never later
+// than their earliest attendance in the period — so staff whose accounts were
+// created after they'd already started (and have backfilled attendance) aren't clamped.
+function effectiveStartDate(user: User, earliestRecordDate: string | null): string {
+  const joinAnchor = user.internshipStart || localDateString(new Date(user.createdAt));
+  if (earliestRecordDate && earliestRecordDate < joinAnchor) return earliestRecordDate;
+  return joinAnchor;
+}
+
 function computeReport(
   users: User[],
   attendance: AttendanceRecord[],
@@ -84,24 +114,19 @@ function computeReport(
   from: string,
   to: string
 ): AttendanceReportRow[] {
-  // Count required work days in range, excluding admin days off.
-  // Use local-tz date strings throughout so the daysOff lookup matches the stored YYYY-MM-DD
-  // (otherwise UTC-shifted .toISOString() drops or shifts the day in non-UTC timezones).
-  const start = new Date(`${from}T00:00:00`);
-  const end = new Date(`${to}T00:00:00`);
-  let actualWorkdays = 0;
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    const dow = cursor.getDay();
-    const dateStr = localDateString(cursor);
-    if (workDays.includes(dow) && !daysOffDates.has(dateStr)) actualWorkdays++;
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
   return users.map((user) => {
     const records = attendance.filter(
       (r) => r.userId === user.id && r.date >= from && r.date <= to
     );
+
+    // Clamp the workday count to the member's effective start so days before they
+    // joined aren't counted as absences.
+    const earliestRecordDate = records.length
+      ? records.reduce((min, r) => (r.date < min ? r.date : min), records[0].date)
+      : null;
+    const start = effectiveStartDate(user, earliestRecordDate);
+    const clampedFrom = start > from ? start : from;
+    const actualWorkdays = countWorkdays(clampedFrom, to, workDays, daysOffDates);
 
     let requiredPresent = 0; // check-ins on required workdays
     let offDayBonus = 0;     // any record on an off-day (weekly or admin-set) counts as present
@@ -118,23 +143,30 @@ function computeReport(
       const isRequired = workDays.includes(dow) && !isAdminOff;
 
       if (isOffDay) {
-        // Any record on an off-day (check-in or leave) counts as present surplus
-        offDayBonus++;
-        if (r.status !== 'leave' && r.isLate) daysLate++;
+        // Only actual attendance on an off-day counts as present surplus.
+        if (isPresentStatus(r.status) && r.checkInTime !== null) {
+          offDayBonus++;
+          if (r.isLate) daysLate++;
+        }
       } else if (isRequired) {
-        if (r.status === 'leave') {
+        if (isExcusedStatus(r.status)) {
+          // izin / sakit — excused, not a worked day.
           daysLeave++;
-        } else if (r.checkInTime !== null) {
+        } else if (isPresentStatus(r.status)) {
+          // check-in (real attendance) or comp_off (substitutes a missed day → present).
+          // comp_off has no check-in time, so don't gate this on checkInTime.
           requiredPresent++;
           if (r.isLate) daysLate++;
         }
+        // alpha (unexcused) falls through → counted in daysAbsent.
       }
       // Records on fully non-working days (neither required nor off-day) are ignored.
     }
 
     const daysPresent = requiredPresent + offDayBonus;
-    // Absent = required workdays the member did not show up for (leave counts as missed).
-    const daysAbsent = Math.max(0, actualWorkdays - requiredPresent);
+    // Absent = unexcused misses only (alpha + no-show). Excused days (izin / sakit)
+    // are reported under Leave and must not also count here.
+    const daysAbsent = Math.max(0, actualWorkdays - requiredPresent - daysLeave);
     // Surplus = net relative to required workdays. Positive = bonus; negative = deficit.
     const surplus = daysPresent - actualWorkdays;
     const corrections = records.filter((r) => r.correctedBy).length;
@@ -336,8 +368,9 @@ export default function ReportsPage() {
       {/* ── Filters & Generate ───────────────────────────────── */}
       <Card className="overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.03] animate-fade-in">
         <CardContent className="p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-            <div className="space-y-1.5">
+          <div className="flex flex-wrap items-end gap-3">
+            {/* From date */}
+            <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-muted-foreground">From</label>
               <Input
                 type="date"
@@ -349,7 +382,9 @@ export default function ReportsPage() {
                 className="h-9 w-40"
               />
             </div>
-            <div className="space-y-1.5">
+
+            {/* To date */}
+            <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-muted-foreground">To</label>
               <Input
                 type="date"
@@ -361,7 +396,9 @@ export default function ReportsPage() {
                 className="h-9 w-40"
               />
             </div>
-            <div className="space-y-1.5">
+
+            {/* Role filter */}
+            <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-muted-foreground">Role</label>
               <Select
                 value={roleFilter}
@@ -371,12 +408,8 @@ export default function ReportsPage() {
                   setGenerated(false);
                 }}
               >
-                <SelectTrigger className="!h-9 w-40">
-                  <SelectValue placeholder="Select role">
-                    {(val) =>
-                      ROLE_OPTIONS.find((o) => o.value === val)?.label ?? 'Select role'
-                    }
-                  </SelectValue>
+                <SelectTrigger className="h-9 w-40">
+                  <SelectValue placeholder="All Roles" />
                 </SelectTrigger>
                 <SelectContent>
                   {ROLE_OPTIONS.map((opt) => (
@@ -387,7 +420,9 @@ export default function ReportsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
+
+            {/* Member filter */}
+            <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-muted-foreground">Member</label>
               <Select
                 value={selectedUserId}
@@ -396,15 +431,8 @@ export default function ReportsPage() {
                   setGenerated(false);
                 }}
               >
-                <SelectTrigger className="!h-9 w-56">
-                  <SelectValue placeholder="Select member">
-                    {(val) => {
-                      if (!val || val === 'all') return 'All Members';
-                      return (
-                        allUsers.find((u) => u.id === val)?.name ?? 'Select member'
-                      );
-                    }}
-                  </SelectValue>
+                <SelectTrigger className="h-9 w-52">
+                  <SelectValue placeholder="All Members" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Members</SelectItem>
@@ -416,14 +444,19 @@ export default function ReportsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <Button
-              onClick={handleGenerate}
-              disabled={loading}
-              className="h-9 gap-1.5 sm:ml-auto"
-            >
-              <FileText className="h-3.5 w-3.5" />
-              {loading ? 'Loading…' : 'Generate Report'}
-            </Button>
+
+            {/* Generate button — sits at bottom of the row via items-end on parent */}
+            <div className="flex flex-col gap-1.5 ml-auto">
+              <div className="h-[18px]" aria-hidden />
+              <Button
+                onClick={handleGenerate}
+                disabled={loading}
+                className="h-9 gap-1.5"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                {loading ? 'Loading…' : 'Generate Report'}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

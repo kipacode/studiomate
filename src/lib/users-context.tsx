@@ -10,6 +10,7 @@ interface UsersContextType {
   updateUser: (id: string, changes: Partial<User>) => Promise<void>;
   createUser: (user: Partial<User> & { password: string }) => Promise<User>;
   toggleStatus: (id: string) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
 }
 
 const UsersContext = createContext<UsersContextType | null>(null);
@@ -78,8 +79,17 @@ export function UsersProvider({ children }: { children: React.ReactNode }) {
     await updateUser(id, { status: newStatus });
   }
 
+  async function deleteUser(id: string) {
+    const res = await fetch(`/api/users/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error ?? "Failed to delete user");
+    }
+    setUsers((prev) => prev.filter((u) => u.id !== id));
+  }
+
   return (
-    <UsersContext.Provider value={{ users, loading, refreshUsers, updateUser, createUser, toggleStatus }}>
+    <UsersContext.Provider value={{ users, loading, refreshUsers, updateUser, createUser, toggleStatus, deleteUser }}>
       {children}
     </UsersContext.Provider>
   );

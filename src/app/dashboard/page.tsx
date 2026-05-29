@@ -56,10 +56,21 @@ interface WeeklyData {
   late: number;
 }
 
-type AttendanceStatus = "checked_in" | "late" | "checked_out" | "not_yet" | "leave";
+type AttendanceStatus =
+  | "checked_in"
+  | "late"
+  | "checked_out"
+  | "not_yet"
+  | "leave"
+  | "sakit"
+  | "alpha"
+  | "comp_off";
 
 function getStatus(record: AttendanceRecord | undefined): AttendanceStatus {
   if (record?.status === "leave") return "leave";
+  if (record?.status === "sakit") return "sakit";
+  if (record?.status === "alpha") return "alpha";
+  if (record?.status === "comp_off") return "comp_off";
   if (!record || !record.checkInTime) return "not_yet";
   if (record.checkOutTime) return "checked_out";
   if (record.isLate) return "late";
@@ -142,7 +153,10 @@ export default function AdminDashboard() {
     late: 1,
     checked_out: 2,
     leave: 3,
-    not_yet: 4,
+    sakit: 4,
+    comp_off: 5,
+    alpha: 6,
+    not_yet: 7,
   };
   memberRows.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 

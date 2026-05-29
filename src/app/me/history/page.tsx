@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { cn, formatTime, formatDate } from "@/lib/utils";
+import { cn, formatTime, formatDate, isPresentStatus, isExcusedStatus, rawStatusLabel, rawStatusBadgeClass } from "@/lib/utils";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -74,9 +74,9 @@ export default function HistoryPage() {
   );
 
   const monthStats = useMemo(() => {
-    const present = monthAttendance.filter((r) => r.status !== "leave" && r.checkInTime && !r.isLate).length;
-    const late = monthAttendance.filter((r) => r.status !== "leave" && r.isLate).length;
-    const leave = monthAttendance.filter((r) => r.status === "leave").length;
+    const present = monthAttendance.filter((r) => isPresentStatus(r.status) && !r.isLate).length;
+    const late = monthAttendance.filter((r) => isPresentStatus(r.status) && r.isLate).length;
+    const leave = monthAttendance.filter((r) => isExcusedStatus(r.status)).length;
     const daysInMonth = getDaysInMonth(year, month);
     let workingDays = 0;
     const today = new Date();
@@ -121,9 +121,9 @@ export default function HistoryPage() {
       }
 
       const record = monthAttendance.find((r) => r.date === dateStr);
-      if (!record) {
+      if (!record || record.status === "alpha") {
         days.push({ day: d, status: "absent" });
-      } else if (record.status === "leave") {
+      } else if (isExcusedStatus(record.status)) {
         days.push({ day: d, status: "leave" });
       } else if (record.isLate) {
         days.push({ day: d, status: "late" });
@@ -333,16 +333,13 @@ export default function HistoryPage() {
                           <TableCell>
                             <Badge
                               variant="secondary"
-                              className={cn(
-                                "text-[10px]",
-                                record.status === "leave"
-                                  ? "bg-indigo-500/10 text-indigo-400"
-                                  : record.isLate
-                                  ? "bg-amber-500/10 text-amber-400"
-                                  : "bg-emerald-500/10 text-emerald-400"
-                              )}
+                              className={cn("text-[10px]", rawStatusBadgeClass(record.status, record.isLate))}
                             >
-                              {record.status === "leave" ? "On Leave" : record.isLate ? "Late" : "Present"}
+                              {record.status === "check-in" || !record.status
+                                ? record.isLate
+                                  ? "Late"
+                                  : "Present"
+                                : rawStatusLabel(record.status)}
                             </Badge>
                           </TableCell>
                         </TableRow>

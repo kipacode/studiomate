@@ -79,16 +79,30 @@ interface AttendanceRecord {
   correctionNote?: string | null;
 }
 
-type AttendanceStatus = 'checked_in' | 'late' | 'checked_out' | 'not_yet' | 'leave';
+type AttendanceStatus =
+  | 'checked_in'
+  | 'late'
+  | 'checked_out'
+  | 'not_yet'
+  | 'leave'
+  | 'sakit'
+  | 'alpha'
+  | 'comp_off';
 
 function resolveStatus(record?: AttendanceRecord): AttendanceStatus {
   if (!record) return 'not_yet';
   if (record.status === 'leave') return 'leave';
+  if (record.status === 'sakit') return 'sakit';
+  if (record.status === 'alpha') return 'alpha';
+  if (record.status === 'comp_off') return 'comp_off';
   if (!record.checkInTime) return 'not_yet';
   if (record.checkOutTime) return 'checked_out';
   if (record.isLate) return 'late';
   return 'checked_in';
 }
+
+const EDITABLE_STATUSES = ['check-in', 'leave', 'sakit', 'alpha', 'comp_off'] as const;
+type EditableStatus = (typeof EDITABLE_STATUSES)[number];
 
 // ── Date / time helpers (local-tz friendly) ────────────────────────
 
@@ -113,7 +127,7 @@ function combineDateTime(date: string, time: string): string | null {
 
 interface AttendanceFormState {
   date: string;
-  status: 'check-in' | 'leave';
+  status: EditableStatus;
   checkInTime: string; // HH:mm
   checkOutTime: string; // HH:mm
   correctionNote: string;
@@ -136,7 +150,9 @@ function initialFormState(
   if (mode === 'edit' && record) {
     return {
       date: record.date,
-      status: record.status === 'leave' ? 'leave' : 'check-in',
+      status: EDITABLE_STATUSES.includes(record.status as EditableStatus)
+        ? (record.status as EditableStatus)
+        : 'check-in',
       checkInTime: timeFromIso(record.checkInTime),
       checkOutTime: timeFromIso(record.checkOutTime),
       correctionNote: '',
@@ -186,9 +202,9 @@ function AttendanceFormDialog({
             date: form.date,
             status: form.status,
             checkInTime:
-              form.status === 'leave' ? null : combineDateTime(form.date, form.checkInTime),
+              form.status !== 'check-in' ? null : combineDateTime(form.date, form.checkInTime),
             checkOutTime:
-              form.status === 'leave' || !form.checkOutTime
+              form.status !== 'check-in' || !form.checkOutTime
                 ? null
                 : combineDateTime(form.date, form.checkOutTime),
             correctionNote: form.correctionNote.trim(),
@@ -204,9 +220,9 @@ function AttendanceFormDialog({
           body: JSON.stringify({
             status: form.status,
             checkInTime:
-              form.status === 'leave' ? null : combineDateTime(form.date, form.checkInTime),
+              form.status !== 'check-in' ? null : combineDateTime(form.date, form.checkInTime),
             checkOutTime:
-              form.status === 'leave' || !form.checkOutTime
+              form.status !== 'check-in' || !form.checkOutTime
                 ? null
                 : combineDateTime(form.date, form.checkOutTime),
             correctionNote: form.correctionNote.trim(),
@@ -255,7 +271,7 @@ function AttendanceFormDialog({
             <Select
               value={form.status}
               onValueChange={(v) =>
-                setForm((f) => ({ ...f, status: v as 'check-in' | 'leave' }))
+                setForm((f) => ({ ...f, status: v as EditableStatus }))
               }
             >
               <SelectTrigger>
@@ -263,7 +279,10 @@ function AttendanceFormDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="check-in">Present</SelectItem>
-                <SelectItem value="leave">On Leave</SelectItem>
+                <SelectItem value="leave">On Leave (Izin)</SelectItem>
+                <SelectItem value="sakit">Sakit</SelectItem>
+                <SelectItem value="comp_off">Comp Off</SelectItem>
+                <SelectItem value="alpha">Alpha (Absent)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -569,9 +588,9 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
                           </div>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
-                          {record.status === 'leave'
+                          {!record.checkInTime
                             ? '—'
-                            : `${record.checkInTime ? formatTime(String(record.checkInTime)) : '—'} → ${record.checkOutTime ? formatTime(String(record.checkOutTime)) : '—'}`}
+                            : `${formatTime(String(record.checkInTime))} → ${record.checkOutTime ? formatTime(String(record.checkOutTime)) : '—'}`}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={cn('text-[10px]', getStatusColor(status))}>
@@ -633,16 +652,20 @@ function MemberRow({
   user,
   status,
   isAdmin,
+  isSelf,
   onView,
   onEdit,
   onToggleStatus,
+  onDelete,
 }: {
   user: User;
   status: AttendanceStatus;
   isAdmin: boolean;
+  isSelf: boolean;
   onView: (u: User) => void;
   onEdit: (u: User) => void;
   onToggleStatus: (uId: string) => void;
+  onDelete: (u: User) => void;
 }) {
   return (
     <TableRow className="border-white/[0.04] transition-colors hover:bg-white/[0.03]">
@@ -707,6 +730,16 @@ function MemberRow({
               >
                 <ToggleLeft className="h-3.5 w-3.5" />
               </Button>
+              {!isSelf && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onDelete(user)}
+                  className="h-7 w-7 text-muted-foreground hover:text-rose-400"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -720,8 +753,8 @@ function MemberRow({
 type RoleFilter = 'all' | 'employee' | 'intern' | 'freelancer';
 
 export default function MembersPage() {
-  const { users, updateUser, createUser, toggleStatus } = useUsers();
-  const { isAdmin } = useAuth();
+  const { users, updateUser, createUser, toggleStatus, deleteUser } = useUsers();
+  const { isAdmin, user: currentUser } = useAuth();
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   
@@ -729,6 +762,10 @@ export default function MembersPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>([]);
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Create/Edit Dialog
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
@@ -855,6 +892,20 @@ export default function MembersPage() {
     }
   }
 
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await deleteUser(deleteTarget.id);
+      toast.success(`${deleteTarget.name} has been deleted`);
+      setDeleteTarget(null);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete member");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 p-6">
       {/* ── Header ──────────────────────────────────────────── */}
@@ -922,14 +973,16 @@ export default function MembersPage() {
                   const record = todayAttendance.find((a) => a.userId === user.id);
                   const status = resolveStatus(record);
                   return (
-                    <MemberRow 
-                      key={user.id} 
-                      user={user} 
-                      status={status} 
+                    <MemberRow
+                      key={user.id}
+                      user={user}
+                      status={status}
                       isAdmin={isAdmin}
+                      isSelf={currentUser?.id === user.id}
                       onView={handleView}
                       onEdit={openEditDialog}
                       onToggleStatus={handleToggleStatus}
+                      onDelete={setDeleteTarget}
                     />
                   );
                 })
@@ -941,6 +994,38 @@ export default function MembersPage() {
 
       {/* ── Detail Dialog ───────────────────────────────────── */}
       <MemberDialog user={selectedUser} open={dialogOpen} onOpenChange={setDialogOpen} />
+
+      {/* ── Delete Confirmation Dialog ──────────────────────── */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Member</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to permanently delete{' '}
+              <span className="font-semibold text-foreground">{deleteTarget?.name}</span>?
+              Their account and all attendance records will be removed. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="gap-1.5"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {deleting ? 'Deleting…' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Create / Edit User Dialog ──────────────────────── */}
       <Dialog open={manageDialogOpen} onOpenChange={setManageDialogOpen}>
