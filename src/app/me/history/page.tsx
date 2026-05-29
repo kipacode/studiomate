@@ -116,25 +116,34 @@ export default function HistoryPage() {
       cursor.setDate(cursor.getDate() + 1);
     }
 
-    // Tally only records on required workdays within the effective range
-    let present = 0, late = 0, leave = 0;
+    // Tally records within the effective range.
+    let present = 0, late = 0, leave = 0, offDayBonus = 0;
     for (const r of monthAttendance) {
       if (r.date < clampedFrom || r.date > effectiveTo) continue;
       const [y, m, d] = r.date.split("-").map(Number);
       const dow = new Date(y, m - 1, d).getDay();
       const isAdminOff = daysOffDates.has(r.date);
-      if (!workDays.includes(dow) || isAdminOff) continue; // skip off-days
+      const isRequired = workDays.includes(dow) && !isAdminOff;
 
-      if (isExcusedStatus(r.status)) {
-        leave++;
-      } else if (isPresentStatus(r.status)) {
-        if (r.isLate) late++;
-        else present++;
+      if (isRequired) {
+        if (isExcusedStatus(r.status)) {
+          leave++;
+        } else if (isPresentStatus(r.status)) {
+          if (r.isLate) late++;
+          else present++;
+        }
+      } else if (isPresentStatus(r.status) && r.checkInTime) {
+        // Worked on an off-day (weekly off or admin holiday) → counts as bonus.
+        offDayBonus++;
       }
     }
 
     const absent = Math.max(0, workingDays - present - late - leave);
-    return { present, late, absent, leave };
+    // Surplus / minus = days physically worked minus required workdays in the
+    // period (from internshipStart). Off-day work adds to it; missed/leave days
+    // pull it down. Matches the admin Reports "Surplus/Minus" column.
+    const surplus = present + late + offDayBonus - workingDays;
+    return { present, late, absent, leave, surplus, workingDays };
   }, [monthAttendance, year, month, workDays, daysOffDates, user]);
 
   // ── Calendar: correct schedule + internshipStart floor ─────────────
@@ -248,7 +257,7 @@ export default function HistoryPage() {
       ) : (
         <>
           {/* Stats Row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-in fade-in duration-300">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 animate-in fade-in duration-300">
             <Card className="border-0 bg-emerald-500/[0.05] ring-1 ring-emerald-500/10">
               <CardContent className="py-3 text-center">
                 <p className="text-2xl font-semibold text-emerald-400 tabular-nums">
@@ -279,6 +288,32 @@ export default function HistoryPage() {
                   {monthStats.absent}
                 </p>
                 <p className="text-xs text-neutral-500 mt-0.5">Absent</p>
+              </CardContent>
+            </Card>
+            <Card
+              className={cn(
+                "border-0 ring-1 col-span-2 md:col-span-1",
+                monthStats.surplus > 0
+                  ? "bg-emerald-500/[0.05] ring-emerald-500/10"
+                  : monthStats.surplus < 0
+                    ? "bg-red-500/[0.05] ring-red-500/10"
+                    : "bg-neutral-500/[0.05] ring-neutral-500/10"
+              )}
+            >
+              <CardContent className="py-3 text-center">
+                <p
+                  className={cn(
+                    "text-2xl font-semibold tabular-nums",
+                    monthStats.surplus > 0
+                      ? "text-emerald-400"
+                      : monthStats.surplus < 0
+                        ? "text-red-400"
+                        : "text-neutral-400"
+                  )}
+                >
+                  {monthStats.surplus > 0 ? `+${monthStats.surplus}` : monthStats.surplus}
+                </p>
+                <p className="text-xs text-neutral-500 mt-0.5">Surplus/Minus</p>
               </CardContent>
             </Card>
           </div>
