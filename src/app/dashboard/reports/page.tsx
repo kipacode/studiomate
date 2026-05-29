@@ -95,12 +95,14 @@ function countWorkdays(
   return n;
 }
 
-// A member isn't penalized for workdays before they joined. Effective start =
-// their join date (internshipStart for interns, else createdAt), but never later
-// than their earliest attendance in the period — so staff whose accounts were
-// created after they'd already started (and have backfilled attendance) aren't clamped.
+// Returns the effective start date for a user's attendance period.
+// internshipStart (when set) is a HARD floor — workdays and records before it
+// are completely excluded from the report regardless of backfilled data.
+// For users without an explicit start, createdAt is used but is softened by
+// the earliest attendance record so backfilled staff aren't penalised.
 function effectiveStartDate(user: User, earliestRecordDate: string | null): string {
-  const joinAnchor = user.internshipStart || localDateString(new Date(user.createdAt));
+  if (user.internshipStart) return user.internshipStart;
+  const joinAnchor = localDateString(new Date(user.createdAt));
   if (earliestRecordDate && earliestRecordDate < joinAnchor) return earliestRecordDate;
   return joinAnchor;
 }
@@ -128,12 +130,17 @@ function computeReport(
     const clampedFrom = start > from ? start : from;
     const actualWorkdays = countWorkdays(clampedFrom, to, workDays, daysOffDates);
 
+    // Only process attendance records from the effective start onwards.
+    // Records before internshipStart (or createdAt) are silently excluded so
+    // backfilled data doesn't inflate present/leave counts.
+    const effectiveRecords = records.filter((r) => r.date >= clampedFrom);
+
     let requiredPresent = 0; // check-ins on required workdays
     let offDayBonus = 0;     // any record on an off-day (weekly or admin-set) counts as present
     let daysLate = 0;
     let daysLeave = 0;       // leave filed on required workdays only
 
-    for (const r of records) {
+    for (const r of effectiveRecords) {
       // Parse YYYY-MM-DD as local date to get the correct day-of-week
       const [y, m, d] = r.date.split('-').map(Number);
       const dow = new Date(y, m - 1, d).getDay();
@@ -169,7 +176,7 @@ function computeReport(
     const daysAbsent = Math.max(0, actualWorkdays - requiredPresent - daysLeave);
     // Surplus = net relative to required workdays. Positive = bonus; negative = deficit.
     const surplus = daysPresent - actualWorkdays;
-    const corrections = records.filter((r) => r.correctedBy).length;
+    const corrections = effectiveRecords.filter((r) => r.correctedBy).length;
 
     return {
       user,
