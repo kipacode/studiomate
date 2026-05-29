@@ -33,7 +33,10 @@ function getFirstDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 1).getDay();
 }
 
-// Fixed warning: formatTime wants string or null, so we handle conversion to string.
+function localDateStr(y: number, m: number, d: number): string {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
 function getDuration(checkIn: string | Date | null, checkOut: string | Date | null): string {
   if (!checkIn || !checkOut) return "—";
   const a = new Date(checkIn).getTime();
@@ -53,17 +56,35 @@ export default function HistoryPage() {
   const [attendanceHistory, setAttendanceHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Work schedule settings (fetched once, defaults match WorkdaySettings seed)
+  const [workDays, setWorkDays] = useState<number[]>([2, 3, 4, 5, 6]); // Tue–Sat
+  const [optionalDays, setOptionalDays] = useState<number[]>([0, 1]);   // Sun, Mon
+  const [daysOffDates, setDaysOffDates] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (!user) return;
     setLoading(true);
-    fetch("/api/attendance")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.attendance) {
-          setAttendanceHistory(d.attendance);
+
+    Promise.all([
+      fetch("/api/attendance").then((r) => r.json()),
+      fetch("/api/settings/workday").then((r) => r.json()),
+      fetch("/api/settings/days-off").then((r) => r.json()),
+    ])
+      .then(([attData, wData, doData]) => {
+        if (attData.attendance) setAttendanceHistory(attData.attendance);
+        if (wData.settings?.workDays) {
+          setWorkDays(wData.settings.workDays.split(",").filter(Boolean).map(Number));
+        }
+        if (wData.settings?.optionalWorkDays) {
+          setOptionalDays(
+            wData.settings.optionalWorkDays.split(",").filter(Boolean).map(Number)
+          );
+        }
+        if (doData.daysOff) {
+          setDaysOffDates(new Set<string>(doData.daysOff.map((d: any) => d.date)));
         }
       })
-      .catch((err) => console.error("Failed to fetch attendance history:", err))
+      .catch((err) => console.error("Failed to fetch history data:", err))
       .finally(() => setLoading(false));
   }, [user]);
 
@@ -73,24 +94,50 @@ export default function HistoryPage() {
     [attendanceHistory, monthStr]
   );
 
+  // ── Stats: respect internshipStart (hard floor) + correct schedule ──
   const monthStats = useMemo(() => {
-    const present = monthAttendance.filter((r) => isPresentStatus(r.status) && !r.isLate).length;
-    const late = monthAttendance.filter((r) => isPresentStatus(r.status) && r.isLate).length;
-    const leave = monthAttendance.filter((r) => isExcusedStatus(r.status)).length;
-    const daysInMonth = getDaysInMonth(year, month);
-    let workingDays = 0;
-    const today = new Date();
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(year, month, d);
-      if (date > today) break;
-      const day = date.getDay();
-      if (day !== 0 && day !== 6) workingDays++;
-    }
-    const totalPresent = present + late;
-    const absent = Math.max(0, workingDays - totalPresent - leave);
-    return { present, late, absent, leave };
-  }, [monthAttendance, year, month]);
+    const internStart = user?.internshipStart ?? null;
+    const monthFirstDay = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+    // Hard floor: don't count days before internshipStart
+    const clampedFrom = internStart && internStart > monthFirstDay ? internStart : monthFirstDay;
 
+    const today = new Date();
+    const todayDateStr = localDateStr(today.getFullYear(), today.getMonth(), today.getDate());
+    const monthLastDay = localDateStr(year, month, getDaysInMonth(year, month));
+    const effectiveTo = monthLastDay < todayDateStr ? monthLastDay : todayDateStr;
+
+    // Count required workdays in [clampedFrom, effectiveTo]
+    let workingDays = 0;
+    const cursor = new Date(`${clampedFrom}T00:00:00`);
+    const end = new Date(`${effectiveTo}T00:00:00`);
+    while (cursor <= end) {
+      const ds = localDateStr(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
+      if (workDays.includes(cursor.getDay()) && !daysOffDates.has(ds)) workingDays++;
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    // Tally only records on required workdays within the effective range
+    let present = 0, late = 0, leave = 0;
+    for (const r of monthAttendance) {
+      if (r.date < clampedFrom || r.date > effectiveTo) continue;
+      const [y, m, d] = r.date.split("-").map(Number);
+      const dow = new Date(y, m - 1, d).getDay();
+      const isAdminOff = daysOffDates.has(r.date);
+      if (!workDays.includes(dow) || isAdminOff) continue; // skip off-days
+
+      if (isExcusedStatus(r.status)) {
+        leave++;
+      } else if (isPresentStatus(r.status)) {
+        if (r.isLate) late++;
+        else present++;
+      }
+    }
+
+    const absent = Math.max(0, workingDays - present - late - leave);
+    return { present, late, absent, leave };
+  }, [monthAttendance, year, month, workDays, daysOffDates, user]);
+
+  // ── Calendar: correct schedule + internshipStart floor ─────────────
   const calendarDays = useMemo(() => {
     const daysInMonth = getDaysInMonth(year, month);
     const firstDay = getFirstDayOfMonth(year, month);
@@ -99,27 +146,48 @@ export default function HistoryPage() {
       status: "present" | "late" | "absent" | "weekend" | "empty" | "future" | "leave";
     }[] = [];
 
+    // Mon-first grid offset
     const offset = firstDay === 0 ? 6 : firstDay - 1;
     for (let i = 0; i < offset; i++) {
       days.push({ day: 0, status: "empty" });
     }
 
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const internStart = user?.internshipStart ?? null;
+
     for (let d = 1; d <= daysInMonth; d++) {
       const date = new Date(year, month, d);
-      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const dateStr = localDateStr(year, month, d);
       const dayOfWeek = date.getDay();
+      const isAdminOff = daysOffDates.has(dateStr);
+      const isRequiredDay = workDays.includes(dayOfWeek) && !isAdminOff;
 
-      if (dayOfWeek === 0 || dayOfWeek === 6) {
-        days.push({ day: d, status: "weekend" });
+      // Before internship start → dim as "not yet started"
+      if (internStart && dateStr < internStart) {
+        days.push({ day: d, status: "future" });
         continue;
       }
 
+      // Off-day (admin holiday or weekly day-off)
+      if (!isRequiredDay) {
+        // If they came in on an optional day, show as present (bonus)
+        const record = monthAttendance.find((r) => r.date === dateStr);
+        if (record && isPresentStatus(record.status) && record.checkInTime) {
+          days.push({ day: d, status: "present" });
+        } else {
+          days.push({ day: d, status: "weekend" });
+        }
+        continue;
+      }
+
+      // Future required day
       if (date > today) {
         days.push({ day: d, status: "future" });
         continue;
       }
 
+      // Past required workday
       const record = monthAttendance.find((r) => r.date === dateStr);
       if (!record || record.status === "alpha") {
         days.push({ day: d, status: "absent" });
@@ -133,24 +201,16 @@ export default function HistoryPage() {
     }
 
     return days;
-  }, [year, month, monthAttendance]);
+  }, [year, month, monthAttendance, workDays, optionalDays, daysOffDates, user]);
 
   function prevMonth() {
-    if (month === 0) {
-      setYear(year - 1);
-      setMonth(11);
-    } else {
-      setMonth(month - 1);
-    }
+    if (month === 0) { setYear(year - 1); setMonth(11); }
+    else setMonth(month - 1);
   }
 
   function nextMonth() {
-    if (month === 11) {
-      setYear(year + 1);
-      setMonth(0);
-    } else {
-      setMonth(month + 1);
-    }
+    if (month === 11) { setYear(year + 1); setMonth(0); }
+    else setMonth(month + 1);
   }
 
   if (!user) {
@@ -282,7 +342,7 @@ export default function HistoryPage() {
                   <span className="size-2 rounded-full bg-neutral-600" /> Absent
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="size-2 rounded-full bg-neutral-800" /> Weekend
+                  <span className="size-2 rounded-full bg-neutral-800" /> Day Off
                 </span>
               </div>
             </CardContent>
