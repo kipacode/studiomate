@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
 
   const checkInTime = new Date();
   const cutoff = new Date(checkInTime);
-  cutoff.setHours(8, 0, 0, 0);
+  cutoff.setUTCHours(1, 0, 0, 0); // 08:00 WIB = 01:00 UTC
   const isLate = checkInTime > cutoff;
 
   const record = await prisma.attendance.create({

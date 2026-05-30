@@ -62,11 +62,11 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "checkInTime required for status 'check-in'" }, { status: 400 });
   }
 
-  // Compute isLate: check-in is after 08:00 on the given date
+  // Compute isLate: check-in is after 08:00 WIB (01:00 UTC)
   let isLate = false;
   if (status === "check-in" && parsedCheckIn) {
     const cutoff = new Date(parsedCheckIn);
-    cutoff.setHours(8, 0, 0, 0);
+    cutoff.setUTCHours(1, 0, 0, 0); // 08:00 WIB = 01:00 UTC
     isLate = parsedCheckIn > cutoff;
   }
 

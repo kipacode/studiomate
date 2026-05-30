@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       if (!existing) {
         const now = new Date();
         const cutoff = new Date(now);
-        cutoff.setHours(8, 0, 0, 0);
+        cutoff.setUTCHours(1, 0, 0, 0); // 08:00 WIB = 01:00 UTC
         const isLate = now > cutoff;
 
         await prisma.attendance.create({
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
         // If record exists, update status. If checking in, set check-in time if empty.
         const now = new Date();
         const cutoff = new Date(now);
-        cutoff.setHours(8, 0, 0, 0);
+        cutoff.setUTCHours(1, 0, 0, 0); // 08:00 WIB = 01:00 UTC
         const isLate = now > cutoff;
 
         await prisma.attendance.update({

@@ -77,7 +77,7 @@ export async function PUT(req: NextRequest, ctx: RouteContext<"/api/attendance/[
   // Auto-compute isLate if checkInTime changed and status is check-in
   if ("checkInTime" in body && status === "check-in" && checkInTime) {
     const cutoff = new Date(checkInTime);
-    cutoff.setHours(8, 0, 0, 0);
+    cutoff.setUTCHours(1, 0, 0, 0); // 08:00 WIB = 01:00 UTC
     allowed.isLate = checkInTime > cutoff;
   }
 
