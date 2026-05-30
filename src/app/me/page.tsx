@@ -207,7 +207,7 @@ export default function MemberDashboardPage() {
     const monthRecords = attendanceHistory.filter((r) => r.date.startsWith(monthStr));
 
     return {
-      present: monthRecords.filter((r) => isPresentStatus(r.status) && !r.isLate).length,
+      present: monthRecords.filter((r) => isPresentStatus(r.status)).length,
       late: monthRecords.filter((r) => isPresentStatus(r.status) && r.isLate).length,
       leave: monthRecords.filter((r) => isExcusedStatus(r.status)).length,
     };
