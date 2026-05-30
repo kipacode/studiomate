@@ -94,12 +94,13 @@ export default function HistoryPage() {
     [attendanceHistory, monthStr]
   );
 
-  // ── Stats: respect internshipStart (hard floor) + correct schedule ──
+  // ── Stats: respect effective start (hard floor) + correct schedule ──
   const monthStats = useMemo(() => {
-    const internStart = user?.internshipStart ?? null;
     const monthFirstDay = `${year}-${String(month + 1).padStart(2, "0")}-01`;
-    // Hard floor: don't count days before internshipStart
-    const clampedFrom = internStart && internStart > monthFirstDay ? internStart : monthFirstDay;
+    // Hard floor: internshipStart for interns, createdAt for everyone else.
+    const effectiveStart = user?.internshipStart
+      ?? (user?.createdAt ? user.createdAt.slice(0, 10) : monthFirstDay);
+    const clampedFrom = effectiveStart > monthFirstDay ? effectiveStart : monthFirstDay;
 
     const today = new Date();
     const todayDateStr = localDateStr(today.getFullYear(), today.getMonth(), today.getDate());
@@ -129,8 +130,8 @@ export default function HistoryPage() {
         if (isExcusedStatus(r.status)) {
           leave++;
         } else if (isPresentStatus(r.status)) {
+          present++;
           if (r.isLate) late++;
-          else present++;
         }
       } else if (isPresentStatus(r.status) && r.checkInTime) {
         // Worked on an off-day (weekly off or admin holiday) → counts as bonus.
@@ -138,11 +139,11 @@ export default function HistoryPage() {
       }
     }
 
-    const absent = Math.max(0, workingDays - present - late - leave);
+    const absent = Math.max(0, workingDays - present - leave);
     // Surplus / minus = days physically worked minus required workdays in the
     // period (from internshipStart). Off-day work adds to it; missed/leave days
     // pull it down. Matches the admin Reports "Surplus/Minus" column.
-    const surplus = present + late + offDayBonus - workingDays;
+    const surplus = present + offDayBonus - workingDays;
     return { present, late, absent, leave, surplus, workingDays };
   }, [monthAttendance, year, month, workDays, daysOffDates, user]);
 
