@@ -150,8 +150,8 @@ function computeReport(
       const isRequired = workDays.includes(dow) && !isAdminOff;
 
       if (isOffDay) {
-        // Only actual attendance on an off-day counts as present surplus.
-        if (isPresentStatus(r.status) && r.checkInTime !== null) {
+        // Actual attendance on an off-day (including comp_off without checkInTime) counts as surplus.
+        if (isPresentStatus(r.status)) {
           offDayBonus++;
           if (r.isLate) daysLate++;
         }

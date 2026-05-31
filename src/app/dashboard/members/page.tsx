@@ -442,21 +442,23 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
         </DialogHeader>
 
         {/* Profile Section */}
-        <div className="flex items-center gap-4">
-          <MoodAvatar mood={user.mood} name={user.name} className="size-14" />
-          <div className="space-y-1">
-            <h3 className="text-base font-semibold">{user.name}</h3>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Mail className="h-3 w-3" />
-              {user.email}
-            </div>
-            {user.birthDate && (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Cake className="h-3 w-3" />
-                {formatDate(user.birthDate)}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <MoodAvatar mood={user.mood} name={user.name} className="size-16" />
+          <div className="space-y-1.5 w-full min-w-0">
+            <h3 className="text-lg font-semibold truncate">{user.name}</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-4 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5 truncate">
+                <Mail className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{user.email}</span>
               </div>
-            )}
-            <div className="flex items-center gap-2 flex-wrap">
+              {user.birthDate && (
+                <div className="flex items-center gap-1.5">
+                  <Cake className="h-3.5 w-3.5 shrink-0" />
+                  {formatDate(user.birthDate)}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap pt-1">
               <Badge variant="outline" className={cn('text-[10px]', getRoleColor(user.role))}>
                 {getRoleLabel(user.role)}
               </Badge>
@@ -523,23 +525,23 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
             )}
           </div>
 
-          <div className="flex items-end gap-2 flex-wrap">
-            <div className="space-y-1">
+          <div className="flex gap-2 w-full sm:w-auto">
+            <div className="space-y-1 flex-1 sm:flex-none">
               <Label className="text-[10px] text-muted-foreground">From</Label>
               <Input
                 type="date"
                 value={rangeFrom}
                 onChange={(e) => setRangeFrom(e.target.value)}
-                className="h-8 w-36"
+                className="h-8 w-full sm:w-36 text-xs"
               />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 flex-1 sm:flex-none">
               <Label className="text-[10px] text-muted-foreground">To</Label>
               <Input
                 type="date"
                 value={rangeTo}
                 onChange={(e) => setRangeTo(e.target.value)}
-                className="h-8 w-36"
+                className="h-8 w-full sm:w-36 text-xs"
               />
             </div>
           </div>
@@ -549,15 +551,15 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
           ) : history.length === 0 ? (
             <p className="text-xs text-muted-foreground py-2">No attendance records in this range.</p>
           ) : (
-            <div className="rounded-lg border border-white/[0.06] overflow-hidden">
-              <Table>
+            <div className="rounded-lg border border-white/[0.06] overflow-x-auto">
+              <Table className="min-w-[450px]">
                 <TableHeader>
                   <TableRow className="border-white/[0.06] hover:bg-transparent">
-                    <TableHead className="text-[10px] text-muted-foreground">Date</TableHead>
-                    <TableHead className="text-[10px] text-muted-foreground">Times</TableHead>
-                    <TableHead className="text-[10px] text-muted-foreground">Status</TableHead>
+                    <TableHead className="text-[10px] text-muted-foreground whitespace-nowrap">Date</TableHead>
+                    <TableHead className="text-[10px] text-muted-foreground whitespace-nowrap">Times</TableHead>
+                    <TableHead className="text-[10px] text-muted-foreground whitespace-nowrap">Status</TableHead>
                     {isAdmin && (
-                      <TableHead className="text-[10px] text-muted-foreground text-right">Actions</TableHead>
+                      <TableHead className="text-[10px] text-muted-foreground text-right whitespace-nowrap">Actions</TableHead>
                     )}
                   </TableRow>
                 </TableHeader>
@@ -566,7 +568,7 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
                     const status = resolveStatus(record);
                     return (
                       <TableRow key={record.id} className="border-white/[0.04]">
-                        <TableCell className="text-xs">
+                        <TableCell className="text-xs whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             {formatDate(record.date)}
                             {record.correctedBy && (
@@ -587,7 +589,7 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
+                        <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                           {!record.checkInTime
                             ? '—'
                             : `${formatTime(String(record.checkInTime))} → ${record.checkOutTime ? formatTime(String(record.checkOutTime)) : '—'}`}
@@ -598,7 +600,7 @@ function MemberDialog({ user, open, onOpenChange }: MemberDialogProps) {
                           </Badge>
                         </TableCell>
                         {isAdmin && (
-                          <TableCell className="text-right">
+                          <TableCell className="text-right whitespace-nowrap">
                             <div className="inline-flex gap-1">
                               <Button
                                 variant="ghost"
